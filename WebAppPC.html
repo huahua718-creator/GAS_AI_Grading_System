@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>🎓 AI 智慧批改與教學助手系統</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Tailwind CSS CDN for modern responsive UI -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons / FontAwesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Microsoft JhengHei", sans-serif; }
+    .badge-doc { background-color: #E0F2FE; color: #0369A1; }
+    .badge-word { background-color: #DBEAFE; color: #1D4ED8; }
+    .badge-image { background-color: #FEF3C7; color: #B45309; }
+    .badge-pdf { background-color: #FEE2E2; color: #B91C1C; }
+    .active-row { background-color: #EEF2FF !important; border-left: 4px solid #4F46E5 !important; }
+    .pulse-dot { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+  <!-- Top Navigation Bar -->
+  <header class="bg-indigo-900 text-white shadow-md sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-lg bg-indigo-600 flex items-center justify-center text-xl shadow">
+          <i class="fa-solid fa-graduation-cap"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight">AI 智慧批改與教學助手</h1>
+          <p class="text-xs text-indigo-200">Google Classroom + Gemini 2.5 Flash + WebRTC 雙裝置聯動</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <span id="activeStudentBadge" class="hidden sm:inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-indigo-800 text-indigo-200 border border-indigo-700">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 mr-2 pulse-dot"></span>
+          目前聯動：<strong id="activeStudentName" class="text-white ml-1">無</strong>
+        </span>
+
+        <button onclick="openMobileQrModal()" class="px-3 py-2 rounded-md bg-indigo-700 hover:bg-indigo-600 text-xs font-medium transition flex items-center shadow-sm">
+          <i class="fa-solid fa-mobile-screen-button mr-1.5"></i> 手機遙控端
+        </button>
+
+        <button onclick="openSettingsModal()" class="px-3 py-2 rounded-md bg-indigo-800 hover:bg-indigo-700 text-xs font-medium transition flex items-center border border-indigo-700">
+          <i class="fa-solid fa-gear mr-1.5"></i> 教師設定
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Control & Selection Bar -->
+  <div class="bg-white border-b border-slate-200 shadow-sm py-3 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <!-- Classroom selectors -->
+      <div class="flex flex-wrap items-center gap-3 flex-1 min-w-[320px]">
+        <div class="flex items-center space-x-2">
+          <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">課程</label>
+          <select id="courseSelect" onchange="onCourseChanged()" class="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none min-w-[180px]">
+            <option value="">載入課程中...</option>
+          </select>
+        </div>
+
+        <div class="flex items-center space-x-2">
+          <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">作業</label>
+          <select id="courseWorkSelect" onchange="onCourseWorkChanged()" class="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none min-w-[200px]">
+            <option value="">請先選擇課程</option>
+          </select>
+        </div>
+
+        <button onclick="loadStudentList()" id="btnRefreshList" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition flex items-center">
+          <i class="fa-solid fa-arrows-rotate mr-1"></i> 重新載入
+        </button>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex items-center space-x-2">
+        <button onclick="openRubricModal()" class="px-3.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center shadow-sm">
+          <i class="fa-solid fa-list-check mr-1.5 text-indigo-600"></i> 自訂規準 (Rubrics)
+        </button>
+
+        <button onclick="triggerBatchAssessment()" id="btnBatchAssess" class="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center shadow-sm">
+          <i class="fa-solid fa-wand-magic-sparkles mr-1.5"></i> 全班 AI 批改與相似度分析
+        </button>
+
+        <button onclick="triggerSyncToMasterSheet()" id="btnSyncSheet" class="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition flex items-center shadow-sm">
+          <i class="fa-solid fa-table-cells mr-1.5"></i> 同步至總表
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Batch Progress Bar (Hidden by default) -->
+  <div id="batchProgressBanner" class="hidden bg-indigo-50 border-b border-indigo-100 px-4 py-2.5">
+    <div class="max-w-7xl mx-auto flex items-center justify-between text-xs text-indigo-900">
+      <div class="flex items-center space-x-2">
+        <i class="fa-solid fa-spinner fa-spin text-indigo-600"></i>
+        <span id="batchProgressText">正在執行 3-Gram 全班相似度比對與 Gemini 多模態批改...</span>
+      </div>
+      <span id="batchProgressCount" class="font-bold">請稍候</span>
+    </div>
+  </div>
+
+  <!-- Main Split Layout -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex-1 w-full grid grid-cols-1 lg:grid-cols-12 gap-5">
+    
+    <!-- Left Column: Student Submissions List (5 cols) -->
+    <section class="lg:col-span-5 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-[calc(100vh-170px)]">
+      <!-- List Header -->
+      <div class="p-3 border-b border-slate-200 flex items-center justify-between bg-slate-50/50 rounded-t-xl">
+        <div class="flex items-center space-x-2">
+          <span class="text-sm font-bold text-slate-800">學生繳交清單</span>
+          <span id="studentCountBadge" class="bg-slate-200 text-slate-700 text-xs px-2 py-0.5 rounded-full font-semibold">0 人</span>
+        </div>
+        <div class="relative w-44">
+          <input type="text" id="searchStudentInput" oninput="filterStudentList()" placeholder="搜尋姓名/學號..." class="w-full pl-7 pr-2 py-1 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500">
+          <i class="fa-solid fa-magnifying-glass absolute left-2 top-2 text-slate-400 text-xs"></i>
+        </div>
+      </div>
+
+      <!-- Students Table Body (Scrollable) -->
+      <div class="flex-1 overflow-y-auto divide-y divide-slate-100" id="studentListContainer">
+        <div class="p-8 text-center text-slate-400 text-sm">
+          <i class="fa-solid fa-folder-open text-3xl mb-2 text-slate-300"></i>
+          <p>請先由上方選取 Classroom 課程與作業</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Active Grading & Dual-device Preview (7 cols) -->
+    <section class="lg:col-span-7 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-[calc(100vh-170px)] overflow-hidden">
+      <!-- Grading Header -->
+      <div class="p-3.5 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between flex-wrap gap-2">
+        <div class="flex items-center space-x-2">
+          <div id="activeFileIcon" class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-bold">
+            <i class="fa-solid fa-file-lines"></i>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <span id="previewStudentName" class="font-bold text-slate-800 text-sm">尚未選定學生</span>
+              <span id="previewStudentId" class="text-xs text-slate-500 font-mono"></span>
+              <span id="previewFileType" class="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase hidden"></span>
+            </div>
+            <p id="previewFileName" class="text-xs text-slate-400 truncate max-w-sm">請從左側點選一位學生以啟用批改與雙裝置聯動</p>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-2" id="previewActions" style="display: none;">
+          <a id="btnOpenDocExternal" href="#" target="_blank" class="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition flex items-center">
+            <i class="fa-solid fa-arrow-up-right-from-square mr-1 text-[11px]"></i> 開啟文件
+          </a>
+          <button onclick="triggerSingleAssess()" id="btnSingleAssess" class="px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center">
+            <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> AI 重評此篇
+          </button>
+        </div>
+      </div>
+
+      <!-- Preview & Feedback Content (Tabs) -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-4" id="gradingDetailsPanel">
+        <!-- Default Empty State -->
+        <div class="h-full flex flex-col items-center justify-center text-slate-400 text-sm py-16">
+          <i class="fa-solid fa-chalkboard-user text-4xl mb-3 text-slate-300"></i>
+          <p class="font-medium text-slate-600">雙裝置批改主控台就緒</p>
+          <p class="text-xs text-slate-400 mt-1">選定學生後，手機開啟遙控端即可隨時語音口述批註</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modal 1: 教師設定視窗 (UserProperties) -->
+  <div id="settingsModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
+      <h3 class="text-lg font-bold text-slate-900 mb-1 flex items-center">
+        <i class="fa-solid fa-sliders text-indigo-600 mr-2"></i> 教師個人權限與金鑰設定
+      </h3>
+      <p class="text-xs text-slate-500 mb-4">系統採用 UserProperties 進行完全隔離，您的 API Key 與成績總表僅限您本人存取，絕不洩漏。</p>
+
+      <div class="space-y-4 text-xs">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Gemini API Key</label>
+          <input type="password" id="inputApiKey" placeholder="AIzaSy..." class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono">
+          <p class="text-[11px] text-slate-400 mt-1">可前往 <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-indigo-600 underline">Google AI Studio</a> 免費取得金鑰。</p>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Google Sheets 成績總表 ID</label>
+          <input type="text" id="inputSheetId" placeholder="例如：1BxiMVs0XRA5nFMd..." class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono">
+          <p class="text-[11px] text-slate-400 mt-1">即試算表網址中 <code>/d/【此處ID】/edit</code> 的長代碼字串。</p>
+        </div>
+
+        <div id="settingsAlert" class="hidden p-3 rounded-lg text-xs"></div>
+      </div>
+
+      <div class="mt-6 flex items-center justify-end space-x-2">
+        <button onclick="closeSettingsModal()" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 font-medium text-xs">取消</button>
+        <button onclick="saveSettings()" id="btnSaveSettings" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs flex items-center">
+          <i class="fa-solid fa-floppy-disk mr-1.5"></i> 儲存設定
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: 自訂評分規準 (Rubrics) -->
+  <div id="rubricModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative max-h-[90vh] flex flex-col">
+      <div class="flex items-center justify-between border-b pb-3 mb-3">
+        <div>
+          <h3 class="text-base font-bold text-slate-900 flex items-center">
+            <i class="fa-solid fa-list-check text-indigo-600 mr-2"></i> 自訂動態評分規準 (Rubrics)
+          </h3>
+          <p class="text-xs text-slate-500">Gemini 2.5 Flash 將嚴格依據此規準產出分項分數與講評表格並附加於文末</p>
+        </div>
+        <button onclick="loadDefaultRubricTemplate()" class="text-xs text-indigo-600 hover:underline font-semibold">
+          載入範本規準
+        </button>
+      </div>
+
+      <!-- Rubrics List -->
+      <div class="flex-1 overflow-y-auto space-y-3 pr-1" id="rubricItemsContainer">
+        <!-- Dynamic items will be rendered here -->
+      </div>
+
+      <div class="pt-3 border-t mt-3 flex items-center justify-between">
+        <button onclick="addRubricItem()" class="px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 text-xs font-semibold flex items-center">
+          <i class="fa-solid fa-plus mr-1"></i> 新增規準項目
+        </button>
+
+        <div class="flex items-center space-x-2">
+          <span class="text-xs text-slate-500">配分總和：<strong id="rubricTotalWeight" class="text-indigo-600 text-sm">100%</strong></span>
+          <button onclick="closeRubricModal()" class="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold">
+            確認完成
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 3: 手機端 QR Code 與連結 -->
+  <div id="mobileQrModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center relative">
+      <h3 class="text-base font-bold text-slate-900 mb-1 flex items-center justify-center">
+        <i class="fa-solid fa-qrcode text-indigo-600 mr-2"></i> 手機無線遙控端配對
+      </h3>
+      <p class="text-xs text-slate-500 mb-4">請用手機相機掃描下方 QR Code，立即開啟 WebRTC 語音口述批註端</p>
+
+      <div class="flex justify-center mb-4">
+        <img id="qrCodeImage" src="" alt="Mobile QR Code" class="w-48 h-48 border p-2 rounded-xl bg-slate-50 shadow-inner">
+      </div>
+
+      <div class="text-left bg-slate-50 p-2.5 rounded-lg border border-slate-200 mb-4">
+        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">手機端專用網址</label>
+        <div class="flex items-center justify-between mt-0.5">
+          <input type="text" id="mobileUrlInput" readonly class="bg-transparent text-xs text-slate-700 w-full truncate focus:outline-none">
+          <button onclick="copyMobileUrl()" class="text-indigo-600 text-xs font-bold hover:underline ml-2">複製</button>
+        </div>
+      </div>
+
+      <button onclick="closeMobileQrModal()" class="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs">
+        關閉視窗
+      </button>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-5 right-5 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl text-xs flex items-center space-x-2 transition-all duration-300 opacity-0 pointer-events-none z-50">
+    <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400"></i>
+    <span id="toastMsg">通知訊息</span>
+  </div>
+
+  <script>
+    // Global State
+    let currentCourses = [];
+    let currentCourseWorks = [];
+    let currentStudents = [];
+    let activeStudent = null;
+    let webAppBaseUrl = '';
+    let rubricConfig = [
+      { criterion: "主題結構與邏輯性", weight: 30, description: "文章結構是否嚴謹，論點是否有說服力與層次" },
+      { criterion: "內容深度與批判洞察", weight: 30, description: "分析深度是否超越表面資料，提出個人洞察與思考" },
+      { criterion: "引述規範與文獻資料", weight: 20, description: "文獻引用是否充分且格式標準符合規範" },
+      { criterion: "文字表達與版面整潔", weight: 20, description: "文句通順無錯別字，圖表與版面呈現美觀" }
+    ];
+
+    // Initialization
+    window.addEventListener('DOMContentLoaded', () => {
+      checkTeacherSettings();
+      fetchWebAppUrl();
+      loadClassroomCourses();
+    });
+
+    function showToast(msg, isError = false) {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toastMsg');
+      const toastIcon = document.getElementById('toastIcon');
+      toastMsg.textContent = msg;
+      toastIcon.className = isError ? 'fa-solid fa-circle-exclamation text-rose-400' : 'fa-solid fa-circle-check text-emerald-400';
+      toast.classList.remove('opacity-0', 'pointer-events-none');
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'pointer-events-none');
+      }, 3500);
+    }
+
+    // 1. Settings & Permissions
+    function checkTeacherSettings() {
+      google.script.run
+        .withSuccessHandler(settings => {
+          if (!settings.hasConfigured) {
+            openSettingsModal();
+            showSettingsAlert('第一次登入，請先輸入您的 Gemini API Key 與成績總表 ID', 'info');
+          } else {
+            document.getElementById('inputApiKey').value = settings.apiKey;
+            document.getElementById('inputSheetId').value = settings.sheetId;
+          }
+        })
+        .withFailureHandler(err => showToast(err.message, true))
+        .getTeacherSettings();
+    }
+
+    function openSettingsModal() { document.getElementById('settingsModal').classList.remove('hidden'); }
+    function closeSettingsModal() { document.getElementById('settingsModal').classList.add('hidden'); }
+
+    function saveSettings() {
+      const apiKey = document.getElementById('inputApiKey').value.trim();
+      const sheetId = document.getElementById('inputSheetId').value.trim();
+      const btn = document.getElementById('btnSaveSettings');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> 連線儲存中...';
+
+      google.script.run
+        .withSuccessHandler(res => {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1.5"></i> 儲存設定';
+          showToast(res.message);
+          closeSettingsModal();
+        })
+        .withFailureHandler(err => {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1.5"></i> 儲存設定';
+          showSettingsAlert(err.message, 'error');
+        })
+        .saveTeacherSettings(apiKey, sheetId);
+    }
+
+    function showSettingsAlert(msg, type) {
+      const alert = document.getElementById('settingsAlert');
+      alert.className = `p-3 rounded-lg text-xs ${type === 'error' ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-indigo-50 text-indigo-700 border border-indigo-200'}`;
+      alert.innerHTML = msg;
+      alert.classList.remove('hidden');
+    }
+
+    // 2. Classroom Courses & Works
+    function loadClassroomCourses() {
+      const select = document.getElementById('courseSelect');
+      select.innerHTML = '<option value="">載入中...</option>';
+      google.script.run
+        .withSuccessHandler(courses => {
+          currentCourses = courses;
+          if (courses.length === 0) {
+            select.innerHTML = '<option value="">無啟用中課程</option>';
+            return;
+          }
+          select.innerHTML = '<option value="">請選擇課程...</option>' + 
+            courses.map(c => `<option value="${c.id}">${c.name} ${c.section ? '('+c.section+')' : ''}</option>`).join('');
+        })
+        .withFailureHandler(err => {
+          select.innerHTML = '<option value="">讀取失敗</option>';
+          showToast(err.message, true);
+        })
+        .getClassroomCourses();
+    }
+
+    function onCourseChanged() {
+      const courseId = document.getElementById('courseSelect').value;
+      const workSelect = document.getElementById('courseWorkSelect');
+      if (!courseId) {
+        workSelect.innerHTML = '<option value="">請先選擇課程</option>';
+        return;
+      }
+      workSelect.innerHTML = '<option value="">讀取作業清單中...</option>';
+      google.script.run
+        .withSuccessHandler(works => {
+          currentCourseWorks = works;
+          if (works.length === 0) {
+            workSelect.innerHTML = '<option value="">此課程尚無作業</option>';
+            return;
+          }
+          workSelect.innerHTML = '<option value="">請選擇作業項目...</option>' +
+            works.map(w => `<option value="${w.id}">${w.title} (${w.maxPoints}分)</option>`).join('');
+        })
+        .withFailureHandler(err => showToast(err.message, true))
+        .getCourseWorks(courseId);
+    }
+
+    function onCourseWorkChanged() {
+      loadStudentList();
+    }
+
+    function loadStudentList() {
+      const courseId = document.getElementById('courseSelect').value;
+      const workId = document.getElementById('courseWorkSelect').value;
+      if (!courseId || !workId) return;
+
+      const container = document.getElementById('studentListContainer');
+      container.innerHTML = `
+        <div class="p-8 text-center text-slate-400 text-sm">
+          <i class="fa-solid fa-spinner fa-spin text-3xl mb-2 text-indigo-500"></i>
+          <p>正在同步 Classroom 繳交名單與轉檔狀態...</p>
+        </div>`;
+
+      google.script.run
+        .withSuccessHandler(students => {
+          currentStudents = students;
+          document.getElementById('studentCountBadge').textContent = `${students.length} 人`;
+          renderStudentList(students);
+          if (students.length > 0 && !activeStudent) {
+            selectStudent(students[0]);
+          }
+        })
+        .withFailureHandler(err => {
+          container.innerHTML = `<div class="p-6 text-center text-rose-500 text-xs">載入名單失敗: ${err.message}</div>`;
+        })
+        .getStudentList(courseId, workId);
+    }
+
+    function renderStudentList(students) {
+      const container = document.getElementById('studentListContainer');
+      if (students.length === 0) {
+        container.innerHTML = '<div class="p-6 text-center text-slate-400 text-xs">無學生繳交記錄</div>';
+        return;
+      }
+
+      container.innerHTML = students.map(s => {
+        const isActive = activeStudent && activeStudent.studentId === s.studentId;
+        const badgeClass = getBadgeClass(s.fileType);
+        const simBadge = s.similarityStatus ? 
+          `<span class="text-[10px] px-1.5 py-0.5 rounded ${s.similarityStatus.includes('⚠️') ? 'bg-amber-100 text-amber-800 font-bold' : 'bg-emerald-100 text-emerald-800'}">${s.similarityStatus}</span>` : '';
+
+        return `
+          <div onclick="selectStudentById('${s.studentId}')" class="p-3 hover:bg-slate-50 transition cursor-pointer flex items-center justify-between ${isActive ? 'active-row' : ''}">
+            <div class="flex items-center space-x-2.5 overflow-hidden">
+              <div class="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                ${s.studentName.charAt(0)}
+              </div>
+              <div class="truncate">
+                <div class="flex items-center space-x-1.5">
+                  <span class="text-xs font-bold text-slate-800">${s.studentName}</span>
+                  <span class="text-[10px] text-slate-400 font-mono">${s.studentId}</span>
+                </div>
+                <div class="flex items-center space-x-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded font-semibold ${badgeClass}">${s.fileType}</span>
+                  <span class="text-[10px] text-slate-400 truncate max-w-[140px]">${s.fileName}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="text-right flex flex-col items-end space-y-1">
+              ${s.score !== undefined && s.score !== null ? 
+                `<span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">${s.score} 分</span>` : 
+                `<span class="text-[10px] text-slate-400">未批改</span>`}
+              ${simBadge}
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function getBadgeClass(fileType) {
+      switch(fileType) {
+        case 'DOC': return 'badge-doc';
+        case 'WORD': return 'badge-word';
+        case 'IMAGE': return 'badge-image';
+        case 'PDF': return 'badge-pdf';
+        default: return 'bg-slate-100 text-slate-500';
+      }
+    }
+
+    function filterStudentList() {
+      const q = document.getElementById('searchStudentInput').value.toLowerCase().trim();
+      const filtered = currentStudents.filter(s => s.studentName.toLowerCase().includes(q) || s.studentId.toLowerCase().includes(q));
+      renderStudentList(filtered);
+    }
+
+    function selectStudentById(studentId) {
+      const s = currentStudents.find(item => item.studentId === studentId);
+      if (s) selectStudent(s);
+    }
+
+    // 3. Dual-device Active Student Selection
+    function selectStudent(student) {
+      activeStudent = student;
+      renderStudentList(currentStudents);
+
+      // Update Top Badge
+      document.getElementById('activeStudentBadge').classList.remove('hidden');
+      document.getElementById('activeStudentName').textContent = `${student.studentName} (${student.studentId})`;
+
+      // Update Grading Workspace Header
+      document.getElementById('previewStudentName').textContent = student.studentName;
+      document.getElementById('previewStudentId').textContent = student.studentId;
+      document.getElementById('previewFileName').textContent = student.fileName;
+      document.getElementById('previewFileType').textContent = student.fileType;
+      document.getElementById('previewFileType').className = `text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${getBadgeClass(student.fileType)}`;
+      document.getElementById('previewFileType').classList.remove('hidden');
+      document.getElementById('previewActions').style.display = 'flex';
+
+      const targetDocId = (student.fileType === 'IMAGE' || student.fileType === 'PDF') ? student.companionDocId : student.fileId;
+      if (targetDocId) {
+        document.getElementById('btnOpenDocExternal').href = `https://docs.google.com/document/d/${targetDocId}/edit`;
+      }
+
+      // Sync active student to CacheService for mobile polling
+      google.script.run.setActiveStudent({
+        fileId: student.fileId,
+        name: student.studentName,
+        studentId: student.studentId,
+        fileType: student.fileType,
+        companionDocId: student.companionDocId || null
+      });
+
+      renderGradingDetails(student);
+    }
+
+    function renderGradingDetails(student) {
+      const panel = document.getElementById('gradingDetailsPanel');
+      const assessment = student.assessment;
+
+      let rubricTableHtml = '';
+      if (assessment && assessment.rubricScores) {
+        rubricTableHtml = `
+          <div class="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-indigo-900 text-white font-semibold">
+                <tr>
+                  <th class="p-2.5">規準項目</th>
+                  <th class="p-2.5 text-center w-16">滿分</th>
+                  <th class="p-2.5 text-center w-16">得分</th>
+                  <th class="p-2.5">講評指引</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 bg-white">
+                ${assessment.rubricScores.map(r => `
+                  <tr>
+                    <td class="p-2.5 font-bold text-slate-800">${r.criterion}</td>
+                    <td class="p-2.5 text-center text-slate-400 font-mono">${r.maxScore}</td>
+                    <td class="p-2.5 text-center font-bold text-indigo-600 font-mono text-sm">${r.score}</td>
+                    <td class="p-2.5 text-slate-600">${r.comment}</td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>`;
+      }
+
+      panel.innerHTML = `
+        <!-- Score & Highlights Bar -->
+        <div class="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100 rounded-xl p-4 flex items-center justify-between">
+          <div>
+            <span class="text-xs font-bold uppercase tracking-wider text-indigo-600">Gemini 2.5 Flash 評定總分</span>
+            <div class="flex items-baseline space-x-2 mt-0.5">
+              <span class="text-3xl font-extrabold text-indigo-950">${assessment ? assessment.totalScore : (student.score !== null ? student.score : '--')}</span>
+              <span class="text-xs text-indigo-400">/ 100 分</span>
+            </div>
+          </div>
+          <div class="text-right">
+            <span class="text-[11px] font-semibold text-slate-500 block">相似度判定結果</span>
+            <span class="text-xs font-bold ${student.similarityStatus && student.similarityStatus.includes('⚠️') ? 'text-amber-600' : 'text-emerald-600'}">
+              ${student.similarityStatus || '尚未執行比對'}
+            </span>
+          </div>
+        </div>
+
+        <!-- Rubric Table Breakdown -->
+        ${rubricTableHtml}
+
+        <!-- Comprehensive Feedback -->
+        <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center">
+            <i class="fa-solid fa-comment-dots text-indigo-600 mr-1.5"></i> 整體綜合講評
+          </h4>
+          <p class="text-xs text-slate-700 leading-relaxed">${assessment ? assessment.overallFeedback : '點選「AI 重評此篇」以產生詳細講評'}</p>
+
+          ${assessment && assessment.improvements ? `
+            <div class="mt-3 pt-3 border-t border-slate-100">
+              <span class="text-[11px] font-bold text-slate-600 block mb-1">💡 具體改進建議：</span>
+              <ul class="list-disc list-inside text-xs text-slate-600 space-y-1">
+                ${assessment.improvements.map(imp => `<li>${imp}</li>`).join('')}
+              </ul>
+            </div>` : ''}
+
+          ${assessment && assessment.rewriteExample ? `
+            <div class="mt-3 p-3 bg-amber-50/70 border border-amber-200 rounded-lg text-xs">
+              <span class="font-bold text-amber-900 block mb-1">✨ AI 示範專業重寫優化：</span>
+              <p class="text-amber-950 italic">${assessment.rewriteExample}</p>
+            </div>` : ''}
+        </div>
+
+        <!-- Mobile Voice Annotation Live Stream -->
+        <div class="bg-teal-50/60 border border-teal-200 rounded-xl p-4">
+          <h4 class="text-xs font-bold text-teal-900 uppercase tracking-wider mb-2 flex items-center">
+            <i class="fa-solid fa-microphone text-teal-600 mr-1.5"></i> 手機無線語音即時批註串流
+          </h4>
+          <p class="text-xs text-teal-800">
+            教師於手機錄音口述後，AI 會自動提煉精要並撰寫範例，同步寫入該生文件的文末。
+          </p>
+        </div>`;
+    }
+
+    // 4. Batch Assessment & Similarity Execution
+    function triggerBatchAssessment() {
+      const courseId = document.getElementById('courseSelect').value;
+      const workId = document.getElementById('courseWorkSelect').value;
+      if (!courseId || !workId) {
+        showToast('請先選定課程與作業項目', true);
+        return;
+      }
+
+      const btn = document.getElementById('btnBatchAssess');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> 批改進行中...';
+      document.getElementById('batchProgressBanner').classList.remove('hidden');
+
+      google.script.run
+        .withSuccessHandler(res => {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles mr-1.5"></i> 全班 AI 批改與相似度分析';
+          document.getElementById('batchProgressBanner').classList.add('hidden');
+          showToast(`全班 ${res.totalCount} 份作業批改與 3-Gram 相似度檢驗完成！`);
+
+          // Update student list with results
+          res.results.forEach(r => {
+            const s = currentStudents.find(item => item.studentId === r.studentId);
+            if (s) {
+              s.score = r.score;
+              s.comment = r.comment;
+              s.similarityStatus = r.similarityStatus;
+              s.assessment = r.assessment;
+            }
+          });
+          renderStudentList(currentStudents);
+          if (activeStudent) {
+            const updatedActive = currentStudents.find(s => s.studentId === activeStudent.studentId);
+            if (updatedActive) selectStudent(updatedActive);
+          }
+        })
+        .withFailureHandler(err => {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles mr-1.5"></i> 全班 AI 批改與相似度分析';
+          document.getElementById('batchProgressBanner').classList.add('hidden');
+          showToast(err.message, true);
+        })
+        .runBatchAssessment(courseId, workId, rubricConfig);
+    }
+
+    function triggerSingleAssess() {
+      if (!activeStudent) return;
+      const btn = document.getElementById('btnSingleAssess');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> 評估中...';
+
+      google.script.run
+        .withSuccessHandler(assessment => {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles mr-1"></i> AI 重評此篇';
+          activeStudent.score = assessment.totalScore;
+          activeStudent.comment = assessment.overallFeedback;
+          activeStudent.assessment = assessment;
+          renderStudentList(currentStudents);
+          renderGradingDetails(activeStudent);
+          showToast(`學生 ${activeStudent.studentName} 重評完成！`);
+        })
+        .withFailureHandler(err => {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles mr-1"></i> AI 重評此篇';
+          showToast(err.message, true);
+        })
+        .assessStudentSubmission(activeStudent, rubricConfig, document.getElementById('inputApiKey').value);
+    }
+
+    // 5. Sync to Master Sheet
+    function triggerSyncToMasterSheet() {
+      if (currentStudents.length === 0) {
+        showToast('名單無學生資料可供同步', true);
+        return;
+      }
+      const workSelect = document.getElementById('courseWorkSelect');
+      const workName = workSelect.options[workSelect.selectedIndex].text.split('(')[0].trim() || '作業成績';
+
+      const resultsToSync = currentStudents.map(s => ({
+        studentId: s.studentId,
+        studentName: s.studentName,
+        score: s.score,
+        comment: s.comment,
+        similarityStatus: s.similarityStatus,
+        similarityDetails: s.assessment ? s.assessment.similarityDetails : null
+      }));
+
+      const btn = document.getElementById('btnSyncSheet');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> 同步中...';
+
+      google.script.run
+        .withSuccessHandler(res => {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-table-cells mr-1.5"></i> 同步至總表';
+          showToast(res.message);
+        })
+        .withFailureHandler(err => {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-table-cells mr-1.5"></i> 同步至總表';
+          showToast(err.message, true);
+        })
+        .syncToMasterSheet(workName, resultsToSync);
+    }
+
+    // 6. Rubrics Management
+    function openRubricModal() {
+      renderRubricEditor();
+      document.getElementById('rubricModal').classList.remove('hidden');
+    }
+    function closeRubricModal() {
+      document.getElementById('rubricModal').classList.add('hidden');
+    }
+
+    function renderRubricEditor() {
+      const container = document.getElementById('rubricItemsContainer');
+      let total = 0;
+      container.innerHTML = rubricConfig.map((r, idx) => {
+        total += parseInt(r.weight || 0);
+        return `
+          <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 relative">
+            <div class="flex items-center space-x-2">
+              <input type="text" value="${r.criterion}" onchange="updateRubric(${idx}, 'criterion', this.value)" placeholder="規準名稱" class="flex-1 text-xs font-bold px-2.5 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+              <div class="flex items-center space-x-1">
+                <input type="number" value="${r.weight}" onchange="updateRubric(${idx}, 'weight', this.value)" class="w-16 text-xs text-center font-bold px-2 py-1.5 border border-slate-300 rounded-lg">
+                <span class="text-xs text-slate-500 font-bold">%</span>
+              </div>
+              <button onclick="deleteRubric(${idx})" class="text-slate-400 hover:text-rose-500 p-1.5 text-xs"><i class="fa-solid fa-trash"></i></button>
+            </div>
+            <textarea onchange="updateRubric(${idx}, 'description', this.value)" placeholder="詳細評估指標與給分指引..." class="w-full text-xs p-2 border border-slate-300 rounded-lg focus:outline-none resize-none h-14 text-slate-600">${r.description || ''}</textarea>
+          </div>`;
+      }).join('');
+      document.getElementById('rubricTotalWeight').textContent = `${total}%`;
+    }
+
+    function updateRubric(index, field, value) {
+      if (field === 'weight') value = parseInt(value) || 0;
+      rubricConfig[index][field] = value;
+      renderRubricEditor();
+    }
+
+    function addRubricItem() {
+      rubricConfig.push({ criterion: "新評分項目", weight: 20, description: "評分標準說明" });
+      renderRubricEditor();
+    }
+
+    function deleteRubric(index) {
+      if (rubricConfig.length <= 1) {
+        showToast('至少需保留一項評分規準', true);
+        return;
+      }
+      rubricConfig.splice(index, 1);
+      renderRubricEditor();
+    }
+
+    function loadDefaultRubricTemplate() {
+      rubricConfig = [
+        { criterion: "主題結構與邏輯性", weight: 30, description: "文章結構是否嚴謹，論點是否有說服力與層次" },
+        { criterion: "內容深度與批判洞察", weight: 30, description: "分析深度是否超越表面資料，提出個人洞察與思考" },
+        { criterion: "引述規範與文獻資料", weight: 20, description: "文獻引用是否充分且格式標準符合規範" },
+        { criterion: "文字表達與版面整潔", weight: 20, description: "文句通順無錯別字，圖表與版面呈現美觀" }
+      ];
+      renderRubricEditor();
+      showToast('已重設為標準報告規準範本');
+    }
+
+    // 7. Mobile QR Code & Link
+    function fetchWebAppUrl() {
+      google.script.run
+        .withSuccessHandler(url => {
+          webAppBaseUrl = url;
+        })
+        .getWebAppUrl();
+    }
+
+    function openMobileQrModal() {
+      const mobileUrl = webAppBaseUrl ? `${webAppBaseUrl}${webAppBaseUrl.includes('?') ? '&' : '?'}page=mobile` : window.location.href + '?page=mobile';
+      document.getElementById('mobileUrlInput').value = mobileUrl;
+      const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(mobileUrl)}`;
+      document.getElementById('qrCodeImage').src = qrApiUrl;
+      document.getElementById('mobileQrModal').classList.remove('hidden');
+    }
+
+    function closeMobileQrModal() {
+      document.getElementById('mobileQrModal').classList.add('hidden');
+    }
+
+    function copyMobileUrl() {
+      const input = document.getElementById('mobileUrlInput');
+      input.select();
+      navigator.clipboard.writeText(input.value);
+      showToast('手機端連結已複製至剪貼簿！');
+    }
+  </script>
+</body>
+</html>

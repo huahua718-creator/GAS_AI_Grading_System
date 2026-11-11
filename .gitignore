@@ -1,0 +1,18 @@
+# Credentials & Secrets
+.clasprc.json
+.env
+.env.*
+*.pem
+*.key
+
+# Dependencies & Build Outputs
+node_modules/
+.next/
+out/
+dist/
+build/
+.vercel/
+
+# OS & Editor
+.DS_Store
+Thumbs.db

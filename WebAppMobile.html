@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>📱 AI 智慧批改 - 手機語音遙控端</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft JhengHei", sans-serif; -webkit-tap-highlight-color: transparent; }
+    .recording-wave {
+      animation: record-pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes record-pulse {
+      0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+      70% { transform: scale(1.08); box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
+      100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col justify-between select-none">
+
+  <!-- Mobile Top Bar -->
+  <header class="p-4 bg-slate-800/80 backdrop-blur border-b border-slate-700/60 sticky top-0 z-20 flex items-center justify-between">
+    <div class="flex items-center space-x-2.5">
+      <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-sm shadow">
+        <i class="fa-solid fa-microphone-lines"></i>
+      </div>
+      <div>
+        <h1 class="text-sm font-bold tracking-tight">AI 語音批註遙控器</h1>
+        <p class="text-[10px] text-slate-400">雙裝置實時聯動中</p>
+      </div>
+    </div>
+
+    <!-- Live Connection Status Indicator -->
+    <div class="flex items-center space-x-1.5 bg-slate-700/50 px-2.5 py-1 rounded-full border border-slate-600/50">
+      <span id="syncDot" class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+      <span id="syncStatusText" class="text-[11px] font-mono text-slate-300">連線中</span>
+    </div>
+  </header>
+
+  <!-- Main Interaction Area -->
+  <main class="flex-1 p-5 flex flex-col justify-between max-w-md mx-auto w-full space-y-4">
+    
+    <!-- Current Student Card (Synced from CacheService) -->
+    <div id="studentCard" class="bg-gradient-to-br from-slate-800 to-indigo-950/70 border border-slate-700 rounded-2xl p-4 shadow-xl transition-all">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-wider flex items-center">
+          <i class="fa-solid fa-desktop mr-1.5"></i> 電腦端目前批改中
+        </span>
+        <span id="mobileFileTypeBadge" class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
+          DOC
+        </span>
+      </div>
+
+      <div class="flex items-center space-x-3">
+        <div class="w-12 h-12 rounded-xl bg-indigo-600 text-white font-extrabold text-xl flex items-center justify-center shadow-lg" id="avatarLetter">
+          ?
+        </div>
+        <div>
+          <h2 class="text-xl font-bold text-white tracking-tight" id="activeStudentName">等待選取...</h2>
+          <div class="flex items-center space-x-2 text-xs text-slate-400 mt-0.5">
+            <span class="font-mono" id="activeStudentId">------</span>
+            <span>•</span>
+            <span class="text-slate-300" id="activeAssignmentHint">請於電腦點選學生</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Voice Recording Interaction Center -->
+    <div class="flex-1 flex flex-col items-center justify-center py-4">
+      
+      <!-- Big Mic Action Button -->
+      <button id="btnRecordToggle" onclick="toggleRecording()" class="w-32 h-32 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white flex flex-col items-center justify-center shadow-2xl transition duration-200 active:scale-95 relative border-4 border-slate-800">
+        <i id="micIcon" class="fa-solid fa-microphone text-4xl mb-1"></i>
+        <span id="btnRecordLabel" class="text-xs font-bold tracking-wider">按此錄音</span>
+      </button>
+
+      <!-- Recording Timer & Visualizer Hint -->
+      <div class="mt-4 text-center">
+        <div id="recordingTimer" class="font-mono text-2xl font-bold text-slate-400 tracking-wider">00:00</div>
+        <p id="recordingHint" class="text-xs text-slate-400 mt-1">
+          點擊開始口述批註，說完後再次點擊即可送出
+        </p>
+      </div>
+    </div>
+
+    <!-- Real-time AI Processing Feedback Stream -->
+    <div id="voiceFeedbackPanel" class="hidden bg-slate-800/90 border border-slate-700 rounded-2xl p-4 space-y-3 shadow-xl">
+      <div class="flex items-center justify-between border-b border-slate-700/80 pb-2">
+        <span class="text-xs font-bold text-indigo-400 flex items-center">
+          <i class="fa-solid fa-wand-magic-sparkles mr-1.5 text-indigo-400"></i> AI 語音即時重寫與摘要
+        </span>
+        <span id="syncConfirmBadge" class="text-[10px] font-bold text-emerald-400 bg-emerald-950/70 border border-emerald-500/40 px-2 py-0.5 rounded-full">
+          <i class="fa-solid fa-circle-check mr-1"></i> 已寫入 Doc
+        </span>
+      </div>
+
+      <div>
+        <span class="text-[10px] text-slate-400 block font-semibold">口述原文辨識：</span>
+        <p id="transcriptionText" class="text-xs text-slate-200 italic mt-0.5"></p>
+      </div>
+
+      <div class="pt-2 border-t border-slate-700/50">
+        <span class="text-[10px] text-amber-400 block font-semibold">示範修訂重寫：</span>
+        <p id="rewriteText" class="text-xs text-amber-200 font-medium mt-0.5 bg-amber-950/40 p-2.5 rounded-lg border border-amber-900/60 leading-relaxed"></p>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Mobile Bottom Footer -->
+  <footer class="p-3 bg-slate-800/60 border-t border-slate-800 text-center text-[10px] text-slate-500">
+    AI Teacher Assistant Mobile WebRTC • Gemini 2.5 Flash
+  </footer>
+
+  <script>
+    // State
+    let isRecording = false;
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let timerInterval = null;
+    let secondsElapsed = 0;
+    let currentActiveStudent = null;
+    let pollingInterval = null;
+
+    window.addEventListener('DOMContentLoaded', () => {
+      startPollingActiveStudent();
+    });
+
+    // 1. Polling CacheService for ACTIVE_STUDENT
+    function startPollingActiveStudent() {
+      pollOnce();
+      pollingInterval = setInterval(pollOnce, 2000);
+    }
+
+    function pollOnce() {
+      google.script.run
+        .withSuccessHandler(student => {
+          updateConnectionStatus(true);
+          if (student) {
+            currentActiveStudent = student;
+            document.getElementById('activeStudentName').textContent = student.name;
+            document.getElementById('activeStudentId').textContent = student.studentId;
+            document.getElementById('avatarLetter').textContent = student.name.charAt(0);
+            document.getElementById('mobileFileTypeBadge').textContent = student.fileType || 'DOC';
+            document.getElementById('activeAssignmentHint').textContent = '已就緒，可隨時口述';
+          } else {
+            document.getElementById('activeStudentName').textContent = '未選定學生';
+            document.getElementById('activeStudentId').textContent = '------';
+            document.getElementById('avatarLetter').textContent = '?';
+            document.getElementById('activeAssignmentHint').textContent = '請於電腦端點選任一位學生';
+          }
+        })
+        .withFailureHandler(err => {
+          updateConnectionStatus(false);
+        })
+        .getActiveStudent();
+    }
+
+    function updateConnectionStatus(isConnected) {
+      const dot = document.getElementById('syncDot');
+      const text = document.getElementById('syncStatusText');
+      if (isConnected) {
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+        text.textContent = '雙向已連線';
+        text.className = 'text-[11px] font-mono text-emerald-300';
+      } else {
+        dot.className = 'w-2 h-2 rounded-full bg-rose-500';
+        text.textContent = '重新連線中';
+        text.className = 'text-[11px] font-mono text-rose-400';
+      }
+    }
+
+    // 2. WebRTC MediaRecorder Voice Recording
+    async function toggleRecording() {
+      if (!currentActiveStudent) {
+        alert('請先在電腦端選定一位要批改的學生！');
+        return;
+      }
+
+      if (!isRecording) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          startRecording(stream);
+        } catch (err) {
+          alert('無法存取麥克風，請確認瀏覽器已授予錄音權限：' + err.message);
+        }
+      } else {
+        stopRecording();
+      }
+    }
+
+    function startRecording(stream) {
+      isRecording = true;
+      audioChunks = [];
+
+      // UI update
+      const btn = document.getElementById('btnRecordToggle');
+      btn.className = 'w-32 h-32 rounded-full bg-rose-600 text-white flex flex-col items-center justify-center shadow-2xl transition duration-200 recording-wave border-4 border-rose-400';
+      document.getElementById('micIcon').className = 'fa-solid fa-stop text-4xl mb-1';
+      document.getElementById('btnRecordLabel').textContent = '完成送出';
+      document.getElementById('recordingHint').textContent = '正在錄音中...請口述具體問題與建議';
+
+      // Timer
+      secondsElapsed = 0;
+      updateTimerDisplay();
+      timerInterval = setInterval(() => {
+        secondsElapsed++;
+        updateTimerDisplay();
+      }, 1000);
+
+      // MediaRecorder initialization
+      let mimeType = 'audio/webm';
+      if (!MediaRecorder.isTypeSupported('audio/webm')) {
+        mimeType = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
+      }
+
+      mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+      mediaRecorder.ondataavailable = event => {
+        if (event.data.size > 0) audioChunks.push(event.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+        // Stop audio tracks
+        stream.getTracks().forEach(track => track.stop());
+        uploadVoiceComment(audioBlob);
+      };
+
+      mediaRecorder.start();
+    }
+
+    function stopRecording() {
+      isRecording = false;
+      clearInterval(timerInterval);
+
+      // UI update
+      const btn = document.getElementById('btnRecordToggle');
+      btn.className = 'w-32 h-32 rounded-full bg-slate-700 text-slate-300 flex flex-col items-center justify-center shadow-2xl border-4 border-slate-600';
+      document.getElementById('micIcon').className = 'fa-solid fa-spinner fa-spin text-3xl mb-1';
+      document.getElementById('btnRecordLabel').textContent = 'AI 處理中';
+      document.getElementById('recordingHint').textContent = '正在呼叫 Gemini 2.5 Flash 辨識與專業重寫...';
+
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+    }
+
+    function updateTimerDisplay() {
+      const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
+      const secs = String(secondsElapsed % 60).padStart(2, '0');
+      document.getElementById('recordingTimer').textContent = `${mins}:${secs}`;
+    }
+
+    // 3. Convert to Base64 & Send to GAS Code.gs
+    function uploadVoiceComment(blob) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64Data = reader.result.split(',')[1];
+        const mimeType = blob.type || 'audio/webm';
+
+        google.script.run
+          .withSuccessHandler(res => {
+            resetRecordButton();
+            // Show Feedback Card
+            document.getElementById('transcriptionText').textContent = res.transcription || '（無辨識內容）';
+            document.getElementById('rewriteText').textContent = res.rewriteExample || '（無重寫示範）';
+            document.getElementById('voiceFeedbackPanel').classList.remove('hidden');
+          })
+          .withFailureHandler(err => {
+            resetRecordButton();
+            alert('語音處理失敗: ' + err.message);
+          })
+          .processMobileVoiceComment(base64Data, mimeType, '');
+      };
+      reader.readAsDataURL(blob);
+    }
+
+    function resetRecordButton() {
+      const btn = document.getElementById('btnRecordToggle');
+      btn.className = 'w-32 h-32 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white flex flex-col items-center justify-center shadow-2xl transition duration-200 active:scale-95 border-4 border-slate-800';
+      document.getElementById('micIcon').className = 'fa-solid fa-microphone text-4xl mb-1';
+      document.getElementById('btnRecordLabel').textContent = '按此錄音';
+      document.getElementById('recordingHint').textContent = '口述已送出！可再次點擊錄製下一則批註';
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+.git/**
+.gitignore
+.clasp.json
+.claspignore
+.clasprc.json
+node_modules/**
+*.md
+*.xlsx
