@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>AI 智慧批改助手</title>
+  <!-- Tailwind CSS CDN for Sidebar -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft JhengHei", sans-serif; font-size: 13px; }
+    .active-card { border-color: #4F46E5 !important; background-color: #EEF2FF !important; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 flex flex-col h-screen select-none">
+
+  <!-- Header -->
+  <header class="bg-indigo-900 text-white p-3 shadow sticky top-0 z-20 flex items-center justify-between">
+    <div class="flex items-center space-x-2">
+      <div class="w-7 h-7 rounded bg-indigo-600 flex items-center justify-center text-sm shadow">
+        <i class="fa-solid fa-graduation-cap"></i>
+      </div>
+      <div>
+        <h1 class="text-xs font-bold leading-tight">AI 智慧批改助手</h1>
+        <p class="text-[10px] text-indigo-200">Google Docs 側邊欄 • BYOK 模式</p>
+      </div>
+    </div>
+
+    <div class="flex items-center space-x-1.5">
+      <button onclick="openPairModal()" title="手機語音配對 QR Code" class="p-1.5 rounded bg-indigo-700 hover:bg-indigo-600 text-xs text-white">
+        <i class="fa-solid fa-mobile-screen-button"></i>
+      </button>
+      <button onclick="openSettingsModal()" title="金鑰與設定" class="p-1.5 rounded bg-indigo-800 hover:bg-indigo-700 text-xs text-indigo-200">
+        <i class="fa-solid fa-gear"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Classroom Selectors -->
+  <div class="p-3 bg-white border-b border-slate-200 space-y-2">
+    <div>
+      <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Classroom 課程</label>
+      <select id="courseSelect" onchange="onCourseChanged()" class="w-full text-xs p-1.5 border border-slate-300 rounded bg-slate-50 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+        <option value="">載入課程中...</option>
+      </select>
+    </div>
+
+    <div>
+      <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">作業項目</label>
+      <select id="courseWorkSelect" onchange="onCourseWorkChanged()" class="w-full text-xs p-1.5 border border-slate-300 rounded bg-slate-50 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+        <option value="">請先選擇課程</option>
+      </select>
+    </div>
+
+    <div class="flex items-center justify-between pt-1">
+      <span class="text-[11px] text-slate-500">繳交名單 (<strong id="studentCount">0</strong> 人)</span>
+      <button onclick="loadStudentList()" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center">
+        <i class="fa-solid fa-arrows-rotate mr-1 text-[10px]"></i> 重新整理
+      </button>
+    </div>
+  </div>
+
+  <!-- Action Bar -->
+  <div class="px-3 py-2 bg-slate-100 border-b border-slate-200 flex items-center space-x-2">
+    <button onclick="triggerBatchAssessment()" id="btnBatchAssess" class="flex-1 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center justify-center shadow-sm">
+      <i class="fa-solid fa-wand-magic-sparkles mr-1.5"></i> 全班 AI 批改
+    </button>
+    <button onclick="triggerSyncToMasterSheet()" id="btnSyncSheet" class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center shadow-sm">
+      <i class="fa-solid fa-table-cells mr-1"></i> 同步總表
+    </button>
+  </div>
+
+  <!-- Student List (Scrollable) -->
+  <main class="flex-1 overflow-y-auto p-2 space-y-2" id="studentListContainer">
+    <div class="p-8 text-center text-slate-400 text-xs">
+      <i class="fa-solid fa-chalkboard text-3xl mb-2 text-slate-300"></i>
+      <p>請先由上方選取 Classroom 課程與作業</p>
+    </div>
+  </main>
+
+  <!-- Live Active Student & Voice Status Bar -->
+  <div class="p-2.5 bg-slate-900 text-white text-xs border-t border-slate-800 flex items-center justify-between">
+    <div class="flex items-center space-x-2 truncate">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+      <span class="truncate" id="activeStudentLabel">聯動：尚未選定</span>
+    </div>
+    <span class="text-[10px] text-slate-400 font-mono" id="voiceSyncIndicator">每2秒輪詢</span>
+  </div>
+
+  <!-- Modal 1: Settings (BYOK Gemini API Key + Sheet ID + Vercel URL) -->
+  <div id="settingsModal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 hidden">
+    <div class="bg-white rounded-xl w-full max-w-sm p-4 space-y-3 shadow-2xl">
+      <h3 class="text-sm font-bold text-slate-900 flex items-center">
+        <i class="fa-solid fa-sliders text-indigo-600 mr-1.5"></i> 教師設定 (BYOK 金鑰)
+      </h3>
+      <p class="text-[11px] text-slate-500">
+        金鑰以加密方式存在此文件的 UserProperties 與您的瀏覽器，絕不落地。
+      </p>
+
+      <div class="space-y-2 text-xs">
+        <div>
+          <label class="block font-bold text-slate-700 mb-0.5">Gemini API Key (BYOK)</label>
+          <input type="password" id="inputApiKey" placeholder="AIzaSy..." class="w-full px-2 py-1.5 border border-slate-300 rounded font-mono text-xs">
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-0.5">Google Sheets 成績總表 ID</label>
+          <input type="text" id="inputSheetId" placeholder="1BxiMVs..." class="w-full px-2 py-1.5 border border-slate-300 rounded font-mono text-xs">
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-0.5">Vercel 語音與 AI 網址</label>
+          <input type="text" id="inputVercelUrl" value="https://gasgradingsystem.vercel.app" class="w-full px-2 py-1.5 border border-slate-300 rounded font-mono text-xs">
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end space-x-2 pt-2">
+        <button onclick="closeSettingsModal()" class="px-3 py-1 rounded border border-slate-300 text-slate-600 text-xs">取消</button>
+        <button onclick="saveSettings()" id="btnSaveSettings" class="px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs">儲存設定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: Phone Pair QR Code -->
+  <div id="pairModal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 hidden">
+    <div class="bg-white rounded-xl w-full max-w-xs p-4 text-center space-y-3 shadow-2xl">
+      <h3 class="text-sm font-bold text-slate-900 flex items-center justify-center">
+        <i class="fa-solid fa-qrcode text-indigo-600 mr-1.5"></i> 手機無線語音遙控器配對
+      </h3>
+      <p class="text-[11px] text-slate-500">請用手機相機掃描下方 QR Code，立即開啟頂層 HTTPS 錄音端</p>
+
+      <div class="flex justify-center">
+        <img id="qrCodeImage" src="" alt="Pairing QR Code" class="w-44 h-44 border p-1 rounded-lg bg-slate-50">
+      </div>
+
+      <div class="text-left bg-slate-50 p-2 rounded border border-slate-200">
+        <input type="text" id="mobilePairUrlInput" readonly class="w-full text-[10px] text-slate-600 bg-transparent focus:outline-none">
+      </div>
+
+      <button onclick="closePairModal()" class="w-full py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs">關閉視窗</button>
+    </div>
+  </div>
+
+  <script>
+    let currentCourses = [];
+    let currentCourseWorks = [];
+    let currentStudents = [];
+    let activeStudent = null;
+    let sessionId = 'session_' + Math.random().toString(36).substring(2, 9);
+    let teacherSettings = { apiKey: '', sheetId: '', vercelUrl: 'https://gasgradingsystem.vercel.app' };
+    let pollInterval = null;
+
+    let rubricConfig = [
+      { criterion: "主題結構與邏輯性", weight: 30, maxScore: 30, description: "文章結構是否嚴謹，論點是否有說服力與層次" },
+      { criterion: "內容深度與批判洞察", weight: 30, maxScore: 30, description: "分析深度是否超越表面資料，提出個人洞察與思考" },
+      { criterion: "引述規範與文獻資料", weight: 20, maxScore: 20, description: "文獻引用是否充分且格式標準符合規範" },
+      { criterion: "文字表達與版面整潔", weight: 20, maxScore: 20, description: "文句通順無錯別字，圖表與版面呈現美觀" }
+    ];
+
+    window.addEventListener('DOMContentLoaded', () => {
+      loadTeacherSettings();
+      loadClassroomCourses();
+      startVoiceFeedbackPolling();
+    });
+
+    // 1. Settings
+    function loadTeacherSettings() {
+      google.script.run
+        .withSuccessHandler(settings => {
+          teacherSettings = settings;
+          document.getElementById('inputApiKey').value = settings.apiKey || '';
+          document.getElementById('inputSheetId').value = settings.sheetId || '';
+          document.getElementById('inputVercelUrl').value = settings.vercelUrl || 'https://gasgradingsystem.vercel.app';
+          if (!settings.hasConfigured) {
+            openSettingsModal();
+          }
+        })
+        .getTeacherSettings();
+    }
+
+    function openSettingsModal() { document.getElementById('settingsModal').classList.remove('hidden'); }
+    function closeSettingsModal() { document.getElementById('settingsModal').classList.add('hidden'); }
+
+    function saveSettings() {
+      const apiKey = document.getElementById('inputApiKey').value.trim();
+      const sheetId = document.getElementById('inputSheetId').value.trim();
+      const vercelUrl = document.getElementById('inputVercelUrl').value.trim();
+
+      const btn = document.getElementById('btnSaveSettings');
+      btn.disabled = true;
+      btn.textContent = '儲存中...';
+
+      google.script.run
+        .withSuccessHandler(res => {
+          btn.disabled = false;
+          btn.textContent = '儲存設定';
+          teacherSettings.apiKey = apiKey;
+          teacherSettings.sheetId = sheetId;
+          teacherSettings.vercelUrl = vercelUrl;
+          closeSettingsModal();
+          alert('設定已成功儲存！');
+        })
+        .withFailureHandler(err => {
+          btn.disabled = false;
+          btn.textContent = '儲存設定';
+          alert('儲存失敗: ' + err.message);
+        })
+        .saveTeacherSettings(apiKey, sheetId, vercelUrl);
+    }
+
+    // 2. Classroom Courses & Works
+    function loadClassroomCourses() {
+      const select = document.getElementById('courseSelect');
+      select.innerHTML = '<option value="">載入中...</option>';
+      google.script.run
+        .withSuccessHandler(courses => {
+          currentCourses = courses;
+          if (courses.length === 0) {
+            select.innerHTML = '<option value="">無啟用中課程</option>';
+            return;
+          }
+          select.innerHTML = '<option value="">請選擇課程...</option>' + 
+            courses.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+        })
+        .withFailureHandler(err => {
+          select.innerHTML = '<option value="">讀取失敗</option>';
+          alert(err.message);
+        })
+        .getClassroomCourses();
+    }
+
+    function onCourseChanged() {
+      const courseId = document.getElementById('courseSelect').value;
+      const workSelect = document.getElementById('courseWorkSelect');
+      if (!courseId) {
+        workSelect.innerHTML = '<option value="">請先選擇課程</option>';
+        return;
+      }
+      workSelect.innerHTML = '<option value="">讀取作業中...</option>';
+      google.script.run
+        .withSuccessHandler(works => {
+          currentCourseWorks = works;
+          if (works.length === 0) {
+            workSelect.innerHTML = '<option value="">此課程尚無作業</option>';
+            return;
+          }
+          workSelect.innerHTML = '<option value="">請選擇作業項目...</option>' +
+            works.map(w => `<option value="${w.id}">${w.title} (${w.maxPoints}分)</option>`).join('');
+        })
+        .withFailureHandler(err => alert(err.message))
+        .getCourseWorks(courseId);
+    }
+
+    function onCourseWorkChanged() {
+      loadStudentList();
+    }
+
+    function loadStudentList() {
+      const courseId = document.getElementById('courseSelect').value;
+      const workId = document.getElementById('courseWorkSelect').value;
+      if (!courseId || !workId) return;
+
+      const container = document.getElementById('studentListContainer');
+      container.innerHTML = '<div class="p-6 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin text-2xl text-indigo-500 mb-1"></i><p>載入名單中...</p></div>';
+
+      google.script.run
+        .withSuccessHandler(students => {
+          currentStudents = students;
+          document.getElementById('studentCount').textContent = students.length;
+          renderStudentList(students);
+          if (students.length > 0 && !activeStudent) {
+            selectStudent(students[0]);
+          }
+        })
+        .withFailureHandler(err => {
+          container.innerHTML = `<div class="p-4 text-center text-rose-500 text-xs">載入失敗: ${err.message}</div>`;
+        })
+        .getStudentList(courseId, workId);
+    }
+
+    function renderStudentList(students) {
+      const container = document.getElementById('studentListContainer');
+      if (students.length === 0) {
+        container.innerHTML = '<div class="p-6 text-center text-slate-400 text-xs">無繳交記錄</div>';
+        return;
+      }
+
+      container.innerHTML = students.map(s => {
+        const isActive = activeStudent && activeStudent.studentId === s.studentId;
+        const targetDocId = (s.fileType === 'IMAGE' || s.fileType === 'PDF') ? s.companionDocId : s.fileId;
+        const docLink = targetDocId ? `https://docs.google.com/document/d/${targetDocId}/edit` : '#';
+
+        return `
+          <div onclick="selectStudentById('${s.studentId}')" class="p-2.5 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 transition cursor-pointer flex flex-col space-y-1.5 ${isActive ? 'active-card' : ''}">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-1.5 truncate">
+                <span class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center flex-shrink-0">
+                  ${s.studentName.charAt(0)}
+                </span>
+                <span class="text-xs font-bold text-slate-800 truncate">${s.studentName}</span>
+                <span class="text-[10px] text-slate-400 font-mono">${s.studentId}</span>
+              </div>
+              <span class="text-xs font-extrabold text-indigo-600 font-mono">
+                ${s.score !== undefined && s.score !== null ? s.score + ' 分' : '未批改'}
+              </span>
+            </div>
+
+            <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+              <span class="truncate max-w-[170px] text-[10px] text-slate-400">${s.fileName}</span>
+              <div class="flex items-center space-x-1.5">
+                ${targetDocId ? `<a href="${docLink}" target="_blank" onclick="event.stopPropagation()" class="text-indigo-600 hover:underline text-[10px] font-semibold"><i class="fa-solid fa-arrow-up-right-from-square"></i> 開啟Doc</a>` : ''}
+                <button onclick="event.stopPropagation(); triggerSingleAssessById('${s.studentId}')" class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold">
+                  AI評閱
+                </button>
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function selectStudentById(sid) {
+      const s = currentStudents.find(item => item.studentId === sid);
+      if (s) selectStudent(s);
+    }
+
+    // 3. Select Active Student & Sync to Vercel Redis
+    function selectStudent(student) {
+      activeStudent = student;
+      document.getElementById('activeStudentLabel').textContent = `聯動：${student.studentName} (${student.studentId})`;
+      renderStudentList(currentStudents);
+
+      // Post to Vercel session so phone gets current active student
+      const vercelUrl = teacherSettings.vercelUrl || 'https://gasgradingsystem.vercel.app';
+      fetch(`${vercelUrl}/api/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: sessionId,
+          activeStudent: {
+            studentId: student.studentId,
+            studentName: student.studentName,
+            fileId: student.fileId,
+            fileType: student.fileType,
+            fileName: student.fileName,
+            companionDocId: student.companionDocId || null
+          }
+        })
+      }).catch(e => console.log('Vercel sync error:', e));
+    }
+
+    // 4. Voice Feedback Polling (Pops pending voice items from Vercel Redis)
+    function startVoiceFeedbackPolling() {
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(async () => {
+        if (!sessionId) return;
+        const vercelUrl = teacherSettings.vercelUrl || 'https://gasgradingsystem.vercel.app';
+
+        try {
+          const res = await fetch(`${vercelUrl}/api/session?id=${encodeURIComponent(sessionId)}&action=feedback`);
+          if (!res.ok) return;
+          const data = await res.json();
+
+          if (data.newFeedback && data.newFeedback.length > 0) {
+            data.newFeedback.forEach(fb => {
+              const student = currentStudents.find(s => s.studentId === fb.studentId) || activeStudent;
+              if (student) {
+                // Write into Google Doc in background
+                google.script.run
+                  .withSuccessHandler(() => {
+                    console.log('Voice feedback written to Doc for ' + student.studentName);
+                  })
+                  .writeVoiceFeedbackToDoc(student.fileId, student.fileType, student.companionDocId, fb);
+              }
+            });
+          }
+        } catch (e) {
+          // ignore transient poll errors
+        }
+      }, 2000);
+    }
+
+    // 5. AI Grading Execution (Calls Vercel /api/assess via BYOK Key, then writes to Doc)
+    async function triggerSingleAssessById(sid) {
+      const student = currentStudents.find(s => s.studentId === sid);
+      if (!student) return;
+
+      if (!teacherSettings.apiKey) {
+        alert('請先在設定中輸入您的 Gemini API Key (BYOK)！');
+        openSettingsModal();
+        return;
+      }
+
+      selectStudent(student);
+
+      // 1. Ask GAS for student content (doc text or image Base64)
+      google.script.run
+        .withSuccessHandler(async contentData => {
+          try {
+            const vercelUrl = teacherSettings.vercelUrl || 'https://gasgradingsystem.vercel.app';
+            // 2. Call Vercel /api/assess directly from teacher browser with BYOK header
+            const res = await fetch(`${vercelUrl}/api/assess`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-gemini-api-key': teacherSettings.apiKey
+              },
+              body: JSON.stringify({
+                docText: contentData.docText,
+                imageBase64: contentData.imageBase64,
+                imageMimeType: contentData.imageMimeType,
+                rubricConfig: rubricConfig,
+                studentName: student.studentName
+              })
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '批改失敗');
+
+            const assessment = data.assessment;
+            student.score = assessment.totalScore;
+            student.comment = assessment.overallFeedback;
+            student.assessment = assessment;
+            renderStudentList(currentStudents);
+
+            // 3. Write formatted rubric table into student's Google Doc
+            google.script.run
+              .withSuccessHandler(() => {
+                alert(`學生 ${student.studentName} AI 批閱完成！評分與建議已寫入該生 Google Doc 最末端。`);
+              })
+              .withFailureHandler(err => alert('寫入 Doc 失敗: ' + err.message))
+              .writeAssessmentToDoc(student.fileId, student.fileType, student.companionDocId, assessment);
+
+          } catch (err) {
+            alert('AI 批改發生錯誤: ' + err.message);
+          }
+        })
+        .withFailureHandler(err => alert('讀取作業內容失敗: ' + err.message))
+        .getStudentContentForAssessment(student);
+    }
+
+    // Batch Assessment
+    async function triggerBatchAssessment() {
+      if (currentStudents.length === 0) {
+        alert('名單無學生資料');
+        return;
+      }
+      if (!teacherSettings.apiKey) {
+        alert('請先在設定中輸入 Gemini API Key (BYOK)！');
+        openSettingsModal();
+        return;
+      }
+
+      const btn = document.getElementById('btnBatchAssess');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> 批改中...';
+
+      // 1. Gather all text for 3-Gram similarity check locally in GAS
+      const validStudents = currentStudents.filter(s => s.fileType !== 'NONE');
+      let successCount = 0;
+
+      for (let i = 0; i < validStudents.length; i++) {
+        const s = validStudents[i];
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> (${i + 1}/${validStudents.length}) 批改中...`;
+        await new Promise((resolve) => {
+          google.script.run
+            .withSuccessHandler(async contentData => {
+              try {
+                const vercelUrl = teacherSettings.vercelUrl || 'https://gasgradingsystem.vercel.app';
+                const res = await fetch(`${vercelUrl}/api/assess`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-gemini-api-key': teacherSettings.apiKey
+                  },
+                  body: JSON.stringify({
+                    docText: contentData.docText,
+                    imageBase64: contentData.imageBase64,
+                    imageMimeType: contentData.imageMimeType,
+                    rubricConfig: rubricConfig,
+                    studentName: s.studentName
+                  })
+                });
+
+                const data = await res.json();
+                if (res.ok && data.assessment) {
+                  s.score = data.assessment.totalScore;
+                  s.comment = data.assessment.overallFeedback;
+                  s.assessment = data.assessment;
+                  google.script.run.writeAssessmentToDoc(s.fileId, s.fileType, s.companionDocId, data.assessment);
+                  successCount++;
+                }
+              } catch (e) {
+                console.log('Batch item error:', e);
+              }
+              resolve();
+            })
+            .withFailureHandler(() => resolve())
+            .getStudentContentForAssessment(s);
+        });
+      }
+
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles mr-1.5"></i> 全班 AI 批改';
+      renderStudentList(currentStudents);
+      alert(`批改完成！已完成 ${successCount} 位學生的 AI 評閱與 Doc 寫入。`);
+    }
+
+    // 6. Sync to Google Sheets Master
+    function triggerSyncToMasterSheet() {
+      if (currentStudents.length === 0) {
+        alert('名單無學生資料');
+        return;
+      }
+      const workSelect = document.getElementById('courseWorkSelect');
+      const workName = workSelect.options[workSelect.selectedIndex].text.split('(')[0].trim() || '作業成績';
+
+      const resultsToSync = currentStudents.map(s => ({
+        studentId: s.studentId,
+        studentName: s.studentName,
+        score: s.score,
+        comment: s.comment,
+        similarityStatus: s.similarityStatus || '【獨立完成】',
+        similarityDetails: s.assessment ? s.assessment.similarityDetails : null
+      }));
+
+      const btn = document.getElementById('btnSyncSheet');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> 同步中...';
+
+      google.script.run
+        .withSuccessHandler(res => {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-table-cells mr-1"></i> 同步總表';
+          alert(res.message);
+        })
+        .withFailureHandler(err => {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-table-cells mr-1"></i> 同步總表';
+          alert('同步失敗: ' + err.message);
+        })
+        .syncToMasterSheet(workName, resultsToSync);
+    }
+
+    // 7. Pairing Modal & QR Code
+    function openPairModal() {
+      const vercelUrl = teacherSettings.vercelUrl || 'https://gasgradingsystem.vercel.app';
+      const pairUrl = `${vercelUrl}/?session=${encodeURIComponent(sessionId)}`;
+      document.getElementById('mobilePairUrlInput').value = pairUrl;
+      document.getElementById('qrCodeImage').src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(pairUrl)}`;
+      document.getElementById('pairModal').classList.remove('hidden');
+    }
+
+    function closePairModal() {
+      document.getElementById('pairModal').classList.add('hidden');
+    }
+  </script>
+</body>
+</html>
+

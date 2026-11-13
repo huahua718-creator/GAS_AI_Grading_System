@@ -1,8 +1,9 @@
+**/**
+!gas/**
+!gas/appsscript.json
+!gas/*.gs
+!gas/*.html
 .git/**
-.gitignore
-.clasp.json
-.claspignore
 .clasprc.json
 node_modules/**
-*.md
 *.xlsx
