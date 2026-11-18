@@ -156,11 +156,18 @@
       { criterion: "文字表達與版面整潔", weight: 20, maxScore: 20, description: "文句通順無錯別字，圖表與版面呈現美觀" }
     ];
 
-    window.addEventListener('DOMContentLoaded', () => {
+    function initSidebar() {
       loadTeacherSettings();
       loadClassroomCourses();
       startVoiceFeedbackPolling();
-    });
+    }
+
+    // GAS HtmlService 動態注入 DOM 時，DOMContentLoaded 可能已觸發過，需立即檢查 readyState
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initSidebar);
+    } else {
+      initSidebar();
+    }
 
     // 1. Settings
     function loadTeacherSettings() {
@@ -173,6 +180,9 @@
           if (!settings.hasConfigured) {
             openSettingsModal();
           }
+        })
+        .withFailureHandler(err => {
+          console.error('loadTeacherSettings error:', err);
         })
         .getTeacherSettings();
     }
@@ -210,20 +220,42 @@
     // 2. Classroom Courses & Works
     function loadClassroomCourses() {
       const select = document.getElementById('courseSelect');
-      select.innerHTML = '<option value="">載入中...</option>';
+      select.innerHTML = '<option value="">載入課程中...</option>';
       google.script.run
         .withSuccessHandler(courses => {
-          currentCourses = courses;
-          if (courses.length === 0) {
+          currentCourses = courses || [];
+          if (currentCourses.length === 0) {
             select.innerHTML = '<option value="">無啟用中課程</option>';
             return;
           }
-          select.innerHTML = '<option value="">請選擇課程...</option>' + 
-            courses.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+          select.innerHTML = '';
+          const placeholder = document.createElement('option');
+          placeholder.value = '';
+          placeholder.textContent = '請選擇課程...';
+          select.appendChild(placeholder);
+          currentCourses.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = c.name;
+            select.appendChild(opt);
+          });
         })
         .withFailureHandler(err => {
           select.innerHTML = '<option value="">讀取失敗</option>';
-          alert(err.message);
+          const container = document.getElementById('studentListContainer');
+          const msg = (err && err.message) ? err.message : String(err);
+          container.innerHTML = '';
+          const box = document.createElement('div');
+          box.className = 'p-4 text-center text-rose-600 text-xs space-y-2';
+          const p = document.createElement('p');
+          p.textContent = '無法讀取 Classroom 課程：' + msg;
+          const btn = document.createElement('button');
+          btn.className = 'px-3 py-1 rounded bg-indigo-600 text-white text-xs font-bold';
+          btn.textContent = '重新載入課程';
+          btn.onclick = loadClassroomCourses;
+          box.appendChild(p);
+          box.appendChild(btn);
+          container.appendChild(box);
         })
         .getClassroomCourses();
     }

@@ -163,13 +163,30 @@ function saveTeacherSettings(apiKey, sheetId, vercelUrl) {
 
 function getClassroomCourses() {
   try {
-    var response = Classroom.Courses.list({
-      teacherId: 'me',
-      courseStates: ['ACTIVE']
-    });
-    var courses = response.courses || [];
-    return courses.map(function(c) {
-      return { id: c.id, name: c.name, section: c.section || '' };
+    var allCourses = [];
+    var pageToken = null;
+    do {
+      var params = {
+        teacherId: 'me',
+        courseStates: ['ACTIVE'],
+        pageSize: 50
+      };
+      if (pageToken) {
+        params.pageToken = pageToken;
+      }
+      var response = Classroom.Courses.list(params);
+      if (response.courses && response.courses.length > 0) {
+        allCourses = allCourses.concat(response.courses);
+      }
+      pageToken = response.nextPageToken;
+    } while (pageToken);
+
+    return allCourses.map(function(c) {
+      return {
+        id: c.id,
+        name: c.section ? (c.name + ' (' + c.section + ')') : c.name,
+        section: c.section || ''
+      };
     });
   } catch (err) {
     throw new Error('讀取 Classroom 課程失敗: ' + err.message + ' (請確認進階服務已啟用 Classroom API)');
