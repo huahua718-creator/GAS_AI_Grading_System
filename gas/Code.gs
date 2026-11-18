@@ -37,15 +37,80 @@ function showGradingSidebar() {
   DocumentApp.getUi().showSidebar(html);
 }
 
+// 開啟「教師金鑰與總表設定」獨立對話框
+function openSettingsPrompt() {
+  var htmlContent = [
+    '<!DOCTYPE html>',
+    '<html lang="zh-TW"><head><meta charset="UTF-8"><style>',
+    'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Microsoft JhengHei",sans-serif;font-size:13px;color:#1e293b;margin:0;padding:16px;background:#f8fafc;}',
+    '.field{margin-bottom:12px;}',
+    'label{display:block;font-weight:700;font-size:12px;color:#334155;margin-bottom:4px;}',
+    'input{width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;outline:none;}',
+    'input:focus{border-color:#4f46e5;box-shadow:0 0 0 2px rgba(79,70,229,0.15);}',
+    '.hint{font-size:11px;color:#64748b;margin-top:3px;}',
+    '.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;}',
+    'button{padding:8px 16px;border-radius:6px;border:none;font-size:13px;font-weight:600;cursor:pointer;}',
+    '.btn-cancel{background:#e2e8f0;color:#334155;}',
+    '.btn-save{background:#4f46e5;color:#fff;}',
+    '.btn-save:disabled{opacity:0.6;cursor:not-allowed;}',
+    '#status{margin-top:10px;font-size:12px;min-height:18px;}',
+    '.ok{color:#059669;}.err{color:#dc2626;}',
+    '</style></head><body>',
+    '<div class="field">',
+    '  <label for="apiKey">Gemini API Key (純粹 BYOK)</label>',
+    '  <input id="apiKey" type="password" placeholder="AIzaSy..." />',
+    '  <div class="hint">僅儲存在您個人的 Google 帳號屬性中，不會上傳至他人伺服器。</div>',
+    '</div>',
+    '<div class="field">',
+    '  <label for="sheetId">成績總表 Google Sheets ID</label>',
+    '  <input id="sheetId" type="text" placeholder="例如：1AbCdEfGhIjKlMnOpQrStUvWxYz..." />',
+    '  <div class="hint">可從試算表網址 /d/ 與 /edit 中間複製。</div>',
+    '</div>',
+    '<div class="field">',
+    '  <label for="vercelUrl">Vercel 手機語音端網址</label>',
+    '  <input id="vercelUrl" type="url" placeholder="https://gasgradingsystem.vercel.app" />',
+    '</div>',
+    '<div id="status"></div>',
+    '<div class="actions">',
+    '  <button class="btn-cancel" onclick="google.script.host.close()">取消</button>',
+    '  <button id="saveBtn" class="btn-save" onclick="handleSave()">儲存設定</button>',
+    '</div>',
+    '<script>',
+    '  google.script.run.withSuccessHandler(function(s){',
+    '    document.getElementById("apiKey").value = s.apiKey || "";',
+    '    document.getElementById("sheetId").value = s.sheetId || "";',
+    '    document.getElementById("vercelUrl").value = s.vercelUrl || "https://gasgradingsystem.vercel.app";',
+    '  }).getTeacherSettings();',
+    '  function handleSave(){',
+    '    var btn = document.getElementById("saveBtn");',
+    '    var st = document.getElementById("status");',
+    '    var apiKey = document.getElementById("apiKey").value.trim();',
+    '    var sheetId = document.getElementById("sheetId").value.trim();',
+    '    var vercelUrl = document.getElementById("vercelUrl").value.trim();',
+    '    btn.disabled = true; btn.textContent = "驗證與儲存中...";',
+    '    st.className = ""; st.textContent = "";',
+    '    google.script.run',
+    '      .withSuccessHandler(function(res){',
+    '        st.className = "ok"; st.textContent = res.message || "設定已儲存！";',
+    '        setTimeout(function(){ google.script.host.close(); }, 900);',
+    '      })',
+    '      .withFailureHandler(function(err){',
+    '        btn.disabled = false; btn.textContent = "儲存設定";',
+    '        st.className = "err"; st.textContent = "儲存失敗：" + err.message;',
+    '      })',
+    '      .saveTeacherSettings(apiKey, sheetId, vercelUrl);',
+    '  }',
+    '</script></body></html>'
+  ].join('\n');
+
+  var html = HtmlService.createHtmlOutput(htmlContent)
+    .setWidth(440)
+    .setHeight(330);
+  DocumentApp.getUi().showModalDialog(html, '⚙️ 教師金鑰與總表設定');
+}
+
 // 相容獨立 Web App 瀏覽
 function doGet(e) {
-  var page = (e && e.parameter && e.parameter.page) ? e.parameter.page.toLowerCase() : 'sidebar';
-  if (page === 'mobile') {
-    return HtmlService.createHtmlOutputFromFile('WebAppMobile')
-      .setTitle('AI 智慧批改 - 手機語音端')
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-  }
   return HtmlService.createHtmlOutputFromFile('Sidebar')
     .setTitle('AI 智慧批改主控台')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
