@@ -256,7 +256,169 @@ function getStudentList(courseId, courseWorkId) {
   }
 }
 
-// 讀取學生作業內容（文字或圖片 Base64）
+// 開啟目標 Google Doc（若是目前使用中文件則直接使用 getActiveDocument，避免 saveAndClose 例外）
+function openTargetDoc(docId) {
+  var activeDoc = DocumentApp.getActiveDocument();
+  if (activeDoc && activeDoc.getId() === docId) {
+    return { doc: activeDoc, isActive: true };
+  }
+  return { doc: DocumentApp.openById(docId), isActive: false };
+}
+
+// 從網址或純 ID 擷取 Google Drive / Docs ID
+function extractDriveIdFromInput(input) {
+  if (!input) return '';
+  var trimmed = String(input).trim();
+  var folderMatch = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (folderMatch) return folderMatch[1];
+  var fileMatch = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (fileMatch) return fileMatch[1];
+  var idParamMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (idParamMatch) return idParamMatch[1];
+  return trimmed;
+}
+
+// 從檔名解析學號與姓名（例如 "112001_王小明_心得.docx"）
+function parseStudentFromFilename(fileName) {
+  var base = String(fileName || '').replace(/\.[^.]+$/, '').trim();
+  var tokens = base.split(/[_\-\s]+/).filter(function(t) { return !!t; });
+  if (tokens.length >= 2) {
+    if (/^[a-zA-Z]?\d{3,}$/.test(tokens[0])) {
+      return { studentId: tokens[0], studentName: tokens[1] };
+    }
+    if (/^[a-zA-Z]?\d{3,}$/.test(tokens[1])) {
+      return { studentId: tokens[1], studentName: tokens[0] };
+    }
+    return { studentId: tokens[0], studentName: tokens[1] };
+  }
+  return { studentId: base || 'doc', studentName: base || '未命名檔案' };
+}
+
+// 讀取 Google 雲端硬碟資料夾內所有學生檔案（免 Classroom 模式）
+function getDriveFolderFiles(folderInput) {
+  var folderId = extractDriveIdFromInput(folderInput);
+  if (!folderId) {
+    throw new Error('請輸入有效的 Google 雲端硬碟資料夾連結或 ID');
+  }
+
+  try {
+    var folder = DriveApp.getFolderById(folderId);
+    var filesIter = folder.getFiles();
+    var resultList = [];
+
+    while (filesIter.hasNext()) {
+      var file = filesIter.next();
+      if (file.isTrashed()) continue;
+
+      var title = file.getName();
+      if (title.indexOf('[AI批改') === 0 || title.indexOf('[TempOCR]') === 0) {
+        continue;
+      }
+
+      var mimeType = file.getMimeType();
+      // 跳過試算表、投影片等非批改檔案
+      if (mimeType === 'application/vnd.google-apps.spreadsheet' ||
+          mimeType === 'application/vnd.google-apps.presentation' ||
+          mimeType === 'application/vnd.google-apps.folder') {
+        continue;
+      }
+
+      var parsed = parseStudentFromFilename(title);
+      var fileData = resolveDriveFileDescriptor(file.getId(), title, mimeType, file.getUrl(), parsed.studentName);
+
+      resultList.push({
+        submissionId: file.getId(),
+        userId: file.getId(),
+        studentId: parsed.studentId,
+        studentName: parsed.studentName,
+        email: '',
+        state: 'TURNED_IN',
+        assignedGrade: null,
+        draftGrade: null,
+        fileId: fileData.fileId,
+        fileName: fileData.fileName,
+        fileType: fileData.fileType,
+        viewUrl: fileData.viewUrl,
+        companionDocId: fileData.companionDocId || null
+      });
+    }
+
+    resultList.sort(function(a, b) {
+      return String(a.studentId).localeCompare(String(b.studentId));
+    });
+
+    return {
+      folderId: folderId,
+      folderName: folder.getName(),
+      files: resultList
+    };
+  } catch (err) {
+    throw new Error('讀取雲端硬碟資料夾失敗: ' + err.message + ' (請確認資料夾連結正確且具備存取權限)');
+  }
+}
+
+// 載入單一檔案進行直改與語音標註（傳空值則載入目前開啟中的 Google 文件）
+function getDirectFileTarget(fileInput, customStudentId, customStudentName) {
+  try {
+    if (!fileInput || !String(fileInput).trim()) {
+      var activeDoc = DocumentApp.getActiveDocument();
+      if (!activeDoc) {
+        throw new Error('找不到目前開啟的 Google 文件，請貼上檔案連結或 ID。');
+      }
+      var docName = activeDoc.getName();
+      var parsedActive = parseStudentFromFilename(docName);
+      var sId = (customStudentId && customStudentId.trim()) ? customStudentId.trim() : parsedActive.studentId;
+      var sName = (customStudentName && customStudentName.trim()) ? customStudentName.trim() : parsedActive.studentName;
+
+      return {
+        submissionId: activeDoc.getId(),
+        userId: activeDoc.getId(),
+        studentId: sId,
+        studentName: sName,
+        email: '',
+        state: 'ACTIVE_DOC',
+        assignedGrade: null,
+        draftGrade: null,
+        fileId: activeDoc.getId(),
+        fileName: docName,
+        fileType: 'DOC',
+        viewUrl: activeDoc.getUrl(),
+        companionDocId: null,
+        isActiveDoc: true
+      };
+    }
+
+    var fileId = extractDriveIdFromInput(fileInput);
+    var file = DriveApp.getFileById(fileId);
+    var title = file.getName();
+    var parsed = parseStudentFromFilename(title);
+    var finalName = (customStudentName && customStudentName.trim()) ? customStudentName.trim() : parsed.studentName;
+    var finalId = (customStudentId && customStudentId.trim()) ? customStudentId.trim() : parsed.studentId;
+    var fileData = resolveDriveFileDescriptor(file.getId(), title, file.getMimeType(), file.getUrl(), finalName);
+
+    var active = DocumentApp.getActiveDocument();
+    return {
+      submissionId: file.getId(),
+      userId: file.getId(),
+      studentId: finalId,
+      studentName: finalName,
+      email: '',
+      state: 'DIRECT_FILE',
+      assignedGrade: null,
+      draftGrade: null,
+      fileId: fileData.fileId,
+      fileName: fileData.fileName,
+      fileType: fileData.fileType,
+      viewUrl: fileData.viewUrl,
+      companionDocId: fileData.companionDocId || null,
+      isActiveDoc: !!(active && active.getId() === fileData.fileId)
+    };
+  } catch (err) {
+    throw new Error('載入指定檔案失敗: ' + err.message);
+  }
+}
+
+// 讀取學生作業內容（文字、PDF OCR 或圖片 Base64）
 function getStudentContentForAssessment(student) {
   try {
     if (student.fileType === 'IMAGE') {
@@ -268,12 +430,30 @@ function getStudentContentForAssessment(student) {
         imageMimeType: blob.getContentType(),
         docText: ''
       };
+    } else if (student.fileType === 'PDF') {
+      var pdfText = '';
+      try {
+        var ocrCopy = Drive.Files.copy({
+          title: '[TempOCR] ' + (student.fileName || 'pdf')
+        }, student.fileId, { convert: true, ocr: true });
+        var ocrDoc = DocumentApp.openById(ocrCopy.id);
+        pdfText = ocrDoc.getBody().getText();
+        DriveApp.getFileById(ocrCopy.id).setTrashed(true);
+      } catch (e) {
+        pdfText = '（無法自動擷取 PDF 文字內容：' + e.message + '）';
+      }
+      return {
+        isImage: false,
+        imageBase64: '',
+        imageMimeType: '',
+        docText: pdfText
+      };
     } else {
       var docId = student.fileId;
       var docText = '';
       try {
-        var doc = DocumentApp.openById(docId);
-        docText = doc.getBody().getText();
+        var target = openTargetDoc(docId);
+        docText = target.doc.getBody().getText();
       } catch (e) {
         docText = '（無法讀取文件內容或文件為空）';
       }
@@ -293,6 +473,58 @@ function getStudentContentForAssessment(student) {
 // 4. 檔案自動相容與分流轉檔
 // ==========================================
 
+function resolveDriveFileDescriptor(fileId, title, mimeType, viewUrl, studentName) {
+  var safeTitle = title || '作業檔案';
+  var lowerTitle = safeTitle.toLowerCase();
+  var safeUrl = viewUrl || ('https://drive.google.com/file/d/' + fileId + '/view');
+
+  // 1. Word 檔
+  if (lowerTitle.indexOf('.docx') > -1 || lowerTitle.indexOf('.doc') > -1 ||
+      mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      mimeType === 'application/msword') {
+    var docId = getOrCreateDocFromWord(fileId, safeTitle);
+    return {
+      fileId: docId,
+      originalWordId: fileId,
+      fileName: '[AI批改Doc] ' + safeTitle,
+      fileType: 'WORD',
+      viewUrl: 'https://docs.google.com/document/d/' + docId + '/edit'
+    };
+  }
+
+  // 2. 圖片
+  if (lowerTitle.match(/\.(jpg|jpeg|png)$/) || (mimeType && mimeType.indexOf('image/') === 0)) {
+    var compDocId = getOrCreateCompanionDoc(fileId, safeTitle, studentName);
+    return {
+      fileId: fileId,
+      fileName: safeTitle,
+      fileType: 'IMAGE',
+      viewUrl: safeUrl,
+      companionDocId: compDocId
+    };
+  }
+
+  // 3. PDF
+  if (lowerTitle.endsWith('.pdf') || mimeType === 'application/pdf') {
+    var compPdfDocId = getOrCreateCompanionDoc(fileId, safeTitle, studentName);
+    return {
+      fileId: fileId,
+      fileName: safeTitle,
+      fileType: 'PDF',
+      viewUrl: safeUrl,
+      companionDocId: compPdfDocId
+    };
+  }
+
+  // 4. Google Doc 或一般文字文件
+  return {
+    fileId: fileId,
+    fileName: safeTitle,
+    fileType: 'DOC',
+    viewUrl: 'https://docs.google.com/document/d/' + fileId + '/edit'
+  };
+}
+
 function resolveSubmissionFile(submission, studentName) {
   var emptyFile = { fileId: null, fileName: '未繳交檔案', fileType: 'NONE', viewUrl: '' };
   if (!submission.assignmentSubmission || !submission.assignmentSubmission.attachments) {
@@ -304,56 +536,13 @@ function resolveSubmissionFile(submission, studentName) {
     var att = attachments[i];
     if (att.driveFile) {
       var df = att.driveFile;
-      var fileId = df.id;
-      var title = df.title || '作業檔案';
-      var lowerTitle = title.toLowerCase();
-      var viewUrl = df.alternateLink || '';
-
-      // 1. Google Doc
-      if (lowerTitle.indexOf('.docx') === -1 && lowerTitle.indexOf('.doc') === -1 &&
-          (att.driveFile.mimeType === 'application/vnd.google-apps.document' || !lowerTitle.match(/\.(jpg|jpeg|png|pdf)$/))) {
-        return {
-          fileId: fileId,
-          fileName: title,
-          fileType: 'DOC',
-          viewUrl: viewUrl
-        };
-      }
-
-      // 2. Word 檔
-      if (lowerTitle.indexOf('.docx') > -1 || lowerTitle.indexOf('.doc') > -1) {
-        var docId = getOrCreateDocFromWord(fileId, title);
-        return {
-          fileId: docId,
-          originalWordId: fileId,
-          fileName: '[AI批改Doc] ' + title,
-          fileType: 'WORD',
-          viewUrl: 'https://docs.google.com/document/d/' + docId + '/edit'
-        };
-      }
-
-      // 3. 圖片或 PDF
-      if (lowerTitle.match(/\.(jpg|jpeg|png)$/)) {
-        var compDocId = getOrCreateCompanionDoc(fileId, title, studentName);
-        return {
-          fileId: fileId,
-          fileName: title,
-          fileType: 'IMAGE',
-          viewUrl: viewUrl,
-          companionDocId: compDocId
-        };
-      }
-
-      if (lowerTitle.endsWith('.pdf')) {
-        var compPdfDocId = getOrCreateCompanionDoc(fileId, title, studentName);
-        return {
-          fileId: fileId,
-          fileName: title,
-          fileType: 'PDF',
-          viewUrl: viewUrl,
-          companionDocId: compPdfDocId
-        };
-      }
+      return resolveDriveFileDescriptor(
+        df.id,
+        df.title || '作業檔案',
+        df.mimeType || '',
+        df.alternateLink || '',
+        studentName
+      );
     }
   }
   return emptyFile;
@@ -497,7 +686,8 @@ function writeAssessmentToDoc(fileId, fileType, companionDocId, assessment) {
   if (!targetDocId) return { success: false, message: '無可寫入之 Doc ID' };
 
   try {
-    var doc = DocumentApp.openById(targetDocId);
+    var target = openTargetDoc(targetDocId);
+    var doc = target.doc;
     var body = doc.getBody();
 
     body.appendHorizontalRule();
@@ -550,7 +740,7 @@ function writeAssessmentToDoc(fileId, fileType, companionDocId, assessment) {
       quote.setIndentStart(20);
     }
 
-    doc.saveAndClose();
+    if (!target.isActive) doc.saveAndClose();
     return { success: true };
   } catch (err) {
     Logger.log('寫入 Google Doc 失敗: ' + err.message);
@@ -563,7 +753,8 @@ function writeVoiceFeedbackToDoc(fileId, fileType, companionDocId, feedback) {
   if (!targetDocId) return { success: false };
 
   try {
-    var doc = DocumentApp.openById(targetDocId);
+    var target = openTargetDoc(targetDocId);
+    var doc = target.doc;
     var body = doc.getBody();
 
     body.appendParagraph('\n🎙️ 【教師手機語音即時批註】 (' + Utilities.formatDate(new Date(), 'GMT+8', 'HH:mm:ss') + ')')
@@ -579,7 +770,7 @@ function writeVoiceFeedbackToDoc(fileId, fileType, companionDocId, feedback) {
       body.appendParagraph('示範修訂範例：' + feedback.rewriteExample).setForegroundColor('#2563EB');
     }
 
-    doc.saveAndClose();
+    if (!target.isActive) doc.saveAndClose();
     return { success: true };
   } catch (err) {
     Logger.log('寫入語音批註至 Doc 失敗: ' + err.message);

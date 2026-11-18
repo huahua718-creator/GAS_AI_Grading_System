@@ -35,8 +35,21 @@
     </div>
   </header>
 
-  <!-- Classroom Selectors -->
-  <div class="p-3 bg-white border-b border-slate-200 space-y-2">
+  <!-- Mode Switcher Tabs -->
+  <div class="grid grid-cols-3 bg-indigo-950 text-[11px] font-bold text-indigo-200 border-b border-indigo-800">
+    <button id="tabClassroom" onclick="switchMode('classroom')" class="py-2 text-center bg-indigo-700 text-white border-b-2 border-amber-400 transition">
+      <i class="fa-solid fa-chalkboard-user mr-1"></i>Classroom
+    </button>
+    <button id="tabFolder" onclick="switchMode('folder')" class="py-2 text-center hover:bg-indigo-900 transition">
+      <i class="fa-solid fa-folder-open mr-1"></i>雲端資料夾
+    </button>
+    <button id="tabDirect" onclick="switchMode('direct')" class="py-2 text-center hover:bg-indigo-900 transition">
+      <i class="fa-solid fa-file-pen mr-1"></i>單檔直改
+    </button>
+  </div>
+
+  <!-- Mode 1: Classroom Selectors -->
+  <div id="panelClassroom" class="p-3 bg-white border-b border-slate-200 space-y-2">
     <div>
       <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Classroom 課程</label>
       <select id="courseSelect" onchange="onCourseChanged()" class="w-full text-xs p-1.5 border border-slate-300 rounded bg-slate-50 focus:outline-none focus:ring-1 focus:ring-indigo-500">
@@ -59,6 +72,60 @@
     </div>
   </div>
 
+  <!-- Mode 2: Google Drive Folder Loader -->
+  <div id="panelFolder" class="p-3 bg-white border-b border-slate-200 space-y-2 hidden">
+    <div>
+      <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Google 雲端資料夾連結或 ID</label>
+      <div class="flex space-x-1.5">
+        <input type="text" id="folderInput" placeholder="貼上 Drive 資料夾網址或 ID..." class="flex-1 text-xs px-2 py-1.5 border border-slate-300 rounded bg-slate-50 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+        <button onclick="loadDriveFolder()" id="btnLoadFolder" class="px-2.5 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold whitespace-nowrap">
+          載入
+        </button>
+      </div>
+    </div>
+    <div>
+      <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">總表作業欄位名稱 (同步用)</label>
+      <input type="text" id="folderWorkNameInput" placeholder="載入資料夾後自動帶入..." class="w-full text-xs px-2 py-1 border border-slate-300 rounded bg-slate-50 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+    </div>
+    <div class="flex items-center justify-between pt-0.5">
+      <span class="text-[11px] text-slate-500">檔案數量 (<strong id="folderFileCount">0</strong> 份)</span>
+      <span class="text-[10px] text-slate-400">支援 Doc / Word / 圖片 / PDF</span>
+    </div>
+  </div>
+
+  <!-- Mode 3: Direct Single File / Active Doc -->
+  <div id="panelDirect" class="p-3 bg-white border-b border-slate-200 space-y-2 hidden">
+    <button onclick="loadDirectTarget(true)" class="w-full py-1.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold flex items-center justify-center">
+      <i class="fa-solid fa-file-lines mr-1.5"></i> 載入目前開啟的 Google 文件
+    </button>
+
+    <div>
+      <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">或貼上任意 Drive 檔案連結 / ID</label>
+      <div class="flex space-x-1.5">
+        <input type="text" id="directFileInput" placeholder="貼上 Doc / Word / 圖片連結或 ID..." class="flex-1 text-xs px-2 py-1.5 border border-slate-300 rounded bg-slate-50 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+        <button onclick="loadDirectTarget(false)" class="px-2.5 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold whitespace-nowrap">
+          載入
+        </button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-1.5">
+      <div>
+        <label class="text-[10px] font-bold text-slate-500 block mb-0.5">學號 (選填/同步用)</label>
+        <input type="text" id="directStudentId" oninput="syncDirectMetadata()" placeholder="例: 112001" class="w-full text-xs px-2 py-1 border border-slate-300 rounded bg-slate-50">
+      </div>
+      <div>
+        <label class="text-[10px] font-bold text-slate-500 block mb-0.5">姓名</label>
+        <input type="text" id="directStudentName" oninput="syncDirectMetadata()" placeholder="例: 王小明" class="w-full text-xs px-2 py-1 border border-slate-300 rounded bg-slate-50">
+      </div>
+    </div>
+
+    <div>
+      <label class="text-[10px] font-bold text-slate-500 block mb-0.5">總表作業欄位名稱 (同步用)</label>
+      <input type="text" id="directWorkNameInput" placeholder="作業成績" class="w-full text-xs px-2 py-1 border border-slate-300 rounded bg-slate-50">
+    </div>
+  </div>
+
   <!-- Action Bar -->
   <div class="px-3 py-2 bg-slate-100 border-b border-slate-200 flex items-center space-x-2">
     <button onclick="triggerBatchAssessment()" id="btnBatchAssess" class="flex-1 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center justify-center shadow-sm">
@@ -73,7 +140,7 @@
   <main class="flex-1 overflow-y-auto p-2 space-y-2" id="studentListContainer">
     <div class="p-8 text-center text-slate-400 text-xs">
       <i class="fa-solid fa-chalkboard text-3xl mb-2 text-slate-300"></i>
-      <p>請先由上方選取 Classroom 課程與作業</p>
+      <p>請選擇上方來源模式載入學生作業</p>
     </div>
   </main>
 
@@ -141,6 +208,7 @@
   </div>
 
   <script>
+    let currentMode = 'classroom'; // 'classroom' | 'folder' | 'direct'
     let currentCourses = [];
     let currentCourseWorks = [];
     let currentStudents = [];
@@ -160,6 +228,39 @@
       loadTeacherSettings();
       loadClassroomCourses();
       startVoiceFeedbackPolling();
+    }
+
+    function switchMode(mode) {
+      currentMode = mode;
+      const modeMap = {
+        classroom: { tab: 'tabClassroom', panel: 'panelClassroom', batchLabel: '全班 AI 批改' },
+        folder: { tab: 'tabFolder', panel: 'panelFolder', batchLabel: '資料夾 AI 批改' },
+        direct: { tab: 'tabDirect', panel: 'panelDirect', batchLabel: 'AI 批改此檔' }
+      };
+      Object.keys(modeMap).forEach(key => {
+        const cfg = modeMap[key];
+        const tabEl = document.getElementById(cfg.tab);
+        const panelEl = document.getElementById(cfg.panel);
+        if (key === mode) {
+          tabEl.className = 'py-2 text-center bg-indigo-700 text-white border-b-2 border-amber-400 transition';
+          panelEl.classList.remove('hidden');
+        } else {
+          tabEl.className = 'py-2 text-center hover:bg-indigo-900 transition';
+          panelEl.classList.add('hidden');
+        }
+      });
+
+      const batchBtn = document.getElementById('btnBatchAssess');
+      batchBtn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles mr-1.5"></i> ${modeMap[mode].batchLabel}`;
+
+      currentStudents = [];
+      activeStudent = null;
+      document.getElementById('activeStudentLabel').textContent = '聯動：尚未選定';
+      const emptyMsg = mode === 'classroom'
+        ? '請先由上方選取 Classroom 課程與作業'
+        : (mode === 'folder' ? '請貼上 Google 雲端硬碟資料夾連結或 ID 後點擊載入' : '請點擊「載入目前開啟的 Google 文件」或貼上指定檔案連結');
+      document.getElementById('studentListContainer').innerHTML =
+        `<div class="p-8 text-center text-slate-400 text-xs"><i class="fa-solid fa-folder-tree text-3xl mb-2 text-slate-300"></i><p>${emptyMsg}</p></div>`;
     }
 
     // GAS HtmlService 動態注入 DOM 時，DOMContentLoaded 可能已觸發過，需立即檢查 readyState
@@ -309,27 +410,39 @@
         .getStudentList(courseId, workId);
     }
 
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     function renderStudentList(students) {
       const container = document.getElementById('studentListContainer');
       if (students.length === 0) {
-        container.innerHTML = '<div class="p-6 text-center text-slate-400 text-xs">無繳交記錄</div>';
+        container.innerHTML = '<div class="p-6 text-center text-slate-400 text-xs">無繳交記錄或檔案</div>';
         return;
       }
 
-      container.innerHTML = students.map(s => {
-        const isActive = activeStudent && activeStudent.studentId === s.studentId;
+      container.innerHTML = students.map((s, idx) => {
+        const isActive = activeStudent && (activeStudent.submissionId ? activeStudent.submissionId === s.submissionId : activeStudent.studentId === s.studentId);
         const targetDocId = (s.fileType === 'IMAGE' || s.fileType === 'PDF') ? s.companionDocId : s.fileId;
         const docLink = targetDocId ? `https://docs.google.com/document/d/${targetDocId}/edit` : '#';
+        const safeName = escapeHtml(s.studentName || '未命名');
+        const safeId = escapeHtml(s.studentId || '');
+        const safeFileName = escapeHtml(s.fileName || '');
 
         return `
-          <div onclick="selectStudentById('${s.studentId}')" class="p-2.5 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 transition cursor-pointer flex flex-col space-y-1.5 ${isActive ? 'active-card' : ''}">
+          <div onclick="selectStudentByIndex(${idx})" class="p-2.5 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 transition cursor-pointer flex flex-col space-y-1.5 ${isActive ? 'active-card' : ''}">
             <div class="flex items-center justify-between">
               <div class="flex items-center space-x-1.5 truncate">
                 <span class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center flex-shrink-0">
-                  ${s.studentName.charAt(0)}
+                  ${escapeHtml((s.studentName || '?').charAt(0))}
                 </span>
-                <span class="text-xs font-bold text-slate-800 truncate">${s.studentName}</span>
-                <span class="text-[10px] text-slate-400 font-mono">${s.studentId}</span>
+                <span class="text-xs font-bold text-slate-800 truncate">${safeName}</span>
+                <span class="text-[10px] text-slate-400 font-mono">${safeId}</span>
               </div>
               <span class="text-xs font-extrabold text-indigo-600 font-mono">
                 ${s.score !== undefined && s.score !== null ? s.score + ' 分' : '未批改'}
@@ -337,10 +450,10 @@
             </div>
 
             <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
-              <span class="truncate max-w-[170px] text-[10px] text-slate-400">${s.fileName}</span>
+              <span class="truncate max-w-[170px] text-[10px] text-slate-400">${safeFileName}</span>
               <div class="flex items-center space-x-1.5">
-                ${targetDocId ? `<a href="${docLink}" target="_blank" onclick="event.stopPropagation()" class="text-indigo-600 hover:underline text-[10px] font-semibold"><i class="fa-solid fa-arrow-up-right-from-square"></i> 開啟Doc</a>` : ''}
-                <button onclick="event.stopPropagation(); triggerSingleAssessById('${s.studentId}')" class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold">
+                ${s.isActiveDoc ? '<span class="text-[10px] text-emerald-600 font-bold">目前開啟中</span>' : (targetDocId ? `<a href="${docLink}" target="_blank" onclick="event.stopPropagation()" class="text-indigo-600 hover:underline text-[10px] font-semibold"><i class="fa-solid fa-arrow-up-right-from-square"></i> 開啟Doc</a>` : '')}
+                <button onclick="event.stopPropagation(); triggerSingleAssessByIndex(${idx})" class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold">
                   AI評閱
                 </button>
               </div>
@@ -349,8 +462,8 @@
       }).join('');
     }
 
-    function selectStudentById(sid) {
-      const s = currentStudents.find(item => item.studentId === sid);
+    function selectStudentByIndex(idx) {
+      const s = currentStudents[idx];
       if (s) selectStudent(s);
     }
 
@@ -410,9 +523,135 @@
       }, 2000);
     }
 
+    // 2B. Drive 資料夾批次載入模式
+    function loadDriveFolder() {
+      const folderInput = document.getElementById('folderInput').value.trim();
+      if (!folderInput) {
+        alert('請先貼上 Google 雲端硬碟資料夾連結或 ID');
+        return;
+      }
+
+      const container = document.getElementById('studentListContainer');
+      const btn = document.getElementById('btnLoadFolder');
+      btn.disabled = true;
+      btn.textContent = '載入中...';
+      container.innerHTML = '<div class="p-6 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin text-2xl text-indigo-500 mb-1"></i><p>讀取資料夾檔案中...</p></div>';
+
+      google.script.run
+        .withSuccessHandler(res => {
+          btn.disabled = false;
+          btn.textContent = '載入';
+          currentStudents = res.files || [];
+          document.getElementById('folderFileCount').textContent = currentStudents.length;
+          const workNameEl = document.getElementById('folderWorkNameInput');
+          if (!workNameEl.value.trim() && res.folderName) {
+            workNameEl.value = res.folderName;
+          }
+          activeStudent = null;
+          renderStudentList(currentStudents);
+          if (currentStudents.length > 0) {
+            selectStudent(currentStudents[0]);
+          }
+        })
+        .withFailureHandler(err => {
+          btn.disabled = false;
+          btn.textContent = '載入';
+          container.innerHTML = `<div class="p-4 text-center text-rose-500 text-xs">${err.message}</div>`;
+        })
+        .getDriveFolderFiles(folderInput);
+    }
+
+    // 2C. 單檔直改 / 目前開啟文件模式
+    function loadDirectTarget(useActiveDoc) {
+      const fileInput = useActiveDoc ? '' : document.getElementById('directFileInput').value.trim();
+      if (!useActiveDoc && !fileInput) {
+        alert('請先貼上檔案連結或 ID');
+        return;
+      }
+      const customId = document.getElementById('directStudentId').value.trim();
+      const customName = document.getElementById('directStudentName').value.trim();
+
+      const container = document.getElementById('studentListContainer');
+      container.innerHTML = '<div class="p-6 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin text-2xl text-indigo-500 mb-1"></i><p>讀取目標檔案中...</p></div>';
+
+      google.script.run
+        .withSuccessHandler(student => {
+          currentStudents = [student];
+          document.getElementById('directStudentId').value = student.studentId || '';
+          document.getElementById('directStudentName').value = student.studentName || '';
+          const workNameEl = document.getElementById('directWorkNameInput');
+          if (!workNameEl.value.trim()) {
+            workNameEl.value = student.fileName || '作業成績';
+          }
+          renderStudentList(currentStudents);
+          selectStudent(student);
+        })
+        .withFailureHandler(err => {
+          container.innerHTML = `<div class="p-4 text-center text-rose-500 text-xs">${err.message}</div>`;
+        })
+        .getDirectFileTarget(fileInput, customId, customName);
+    }
+
+    function syncDirectMetadata() {
+      if (currentMode !== 'direct' || currentStudents.length === 0) return;
+      const sid = document.getElementById('directStudentId').value.trim();
+      const sname = document.getElementById('directStudentName').value.trim();
+      if (sid) currentStudents[0].studentId = sid;
+      if (sname) currentStudents[0].studentName = sname;
+      renderStudentList(currentStudents);
+      if (activeStudent) {
+        activeStudent = currentStudents[0];
+        document.getElementById('activeStudentLabel').textContent = `聯動：${activeStudent.studentName} (${activeStudent.studentId})`;
+      }
+    }
+
+    // 共用單筆 AI 批改並寫回 Google Doc
+    function assessStudentPromise(student) {
+      return new Promise((resolve, reject) => {
+        google.script.run
+          .withSuccessHandler(async contentData => {
+            try {
+              const vercelUrl = teacherSettings.vercelUrl || 'https://gasgradingsystem.vercel.app';
+              const res = await fetch(`${vercelUrl}/api/assess`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-gemini-api-key': teacherSettings.apiKey
+                },
+                body: JSON.stringify({
+                  docText: contentData.docText,
+                  imageBase64: contentData.imageBase64,
+                  imageMimeType: contentData.imageMimeType,
+                  rubricConfig: rubricConfig,
+                  studentName: student.studentName
+                })
+              });
+
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || '批改失敗');
+
+              const assessment = data.assessment;
+              student.score = assessment.totalScore;
+              student.comment = assessment.overallFeedback;
+              student.assessment = assessment;
+              renderStudentList(currentStudents);
+
+              google.script.run
+                .withSuccessHandler(() => resolve(assessment))
+                .withFailureHandler(err => reject(new Error('寫入 Doc 失敗: ' + err.message)))
+                .writeAssessmentToDoc(student.fileId, student.fileType, student.companionDocId, assessment);
+            } catch (err) {
+              reject(err);
+            }
+          })
+          .withFailureHandler(err => reject(new Error('讀取作業內容失敗: ' + err.message)))
+          .getStudentContentForAssessment(student);
+      });
+    }
+
     // 5. AI Grading Execution (Calls Vercel /api/assess via BYOK Key, then writes to Doc)
-    async function triggerSingleAssessById(sid) {
-      const student = currentStudents.find(s => s.studentId === sid);
+    async function triggerSingleAssessByIndex(idx) {
+      const student = currentStudents[idx];
       if (!student) return;
 
       if (!teacherSettings.apiKey) {
@@ -422,57 +661,18 @@
       }
 
       selectStudent(student);
-
-      // 1. Ask GAS for student content (doc text or image Base64)
-      google.script.run
-        .withSuccessHandler(async contentData => {
-          try {
-            const vercelUrl = teacherSettings.vercelUrl || 'https://gasgradingsystem.vercel.app';
-            // 2. Call Vercel /api/assess directly from teacher browser with BYOK header
-            const res = await fetch(`${vercelUrl}/api/assess`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-gemini-api-key': teacherSettings.apiKey
-              },
-              body: JSON.stringify({
-                docText: contentData.docText,
-                imageBase64: contentData.imageBase64,
-                imageMimeType: contentData.imageMimeType,
-                rubricConfig: rubricConfig,
-                studentName: student.studentName
-              })
-            });
-
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || '批改失敗');
-
-            const assessment = data.assessment;
-            student.score = assessment.totalScore;
-            student.comment = assessment.overallFeedback;
-            student.assessment = assessment;
-            renderStudentList(currentStudents);
-
-            // 3. Write formatted rubric table into student's Google Doc
-            google.script.run
-              .withSuccessHandler(() => {
-                alert(`學生 ${student.studentName} AI 批閱完成！評分與建議已寫入該生 Google Doc 最末端。`);
-              })
-              .withFailureHandler(err => alert('寫入 Doc 失敗: ' + err.message))
-              .writeAssessmentToDoc(student.fileId, student.fileType, student.companionDocId, assessment);
-
-          } catch (err) {
-            alert('AI 批改發生錯誤: ' + err.message);
-          }
-        })
-        .withFailureHandler(err => alert('讀取作業內容失敗: ' + err.message))
-        .getStudentContentForAssessment(student);
+      try {
+        await assessStudentPromise(student);
+        alert(`學生 ${student.studentName} AI 批閱完成！評分與建議已寫入該生 Google Doc 最末端。`);
+      } catch (err) {
+        alert('AI 批改發生錯誤: ' + err.message);
+      }
     }
 
     // Batch Assessment
     async function triggerBatchAssessment() {
       if (currentStudents.length === 0) {
-        alert('名單無學生資料');
+        alert('名單無檔案或學生資料');
         return;
       }
       if (!teacherSettings.apiKey) {
@@ -485,55 +685,25 @@
       btn.disabled = true;
       btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> 批改中...';
 
-      // 1. Gather all text for 3-Gram similarity check locally in GAS
       const validStudents = currentStudents.filter(s => s.fileType !== 'NONE');
       let successCount = 0;
 
       for (let i = 0; i < validStudents.length; i++) {
         const s = validStudents[i];
         btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> (${i + 1}/${validStudents.length}) 批改中...`;
-        await new Promise((resolve) => {
-          google.script.run
-            .withSuccessHandler(async contentData => {
-              try {
-                const vercelUrl = teacherSettings.vercelUrl || 'https://gasgradingsystem.vercel.app';
-                const res = await fetch(`${vercelUrl}/api/assess`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'x-gemini-api-key': teacherSettings.apiKey
-                  },
-                  body: JSON.stringify({
-                    docText: contentData.docText,
-                    imageBase64: contentData.imageBase64,
-                    imageMimeType: contentData.imageMimeType,
-                    rubricConfig: rubricConfig,
-                    studentName: s.studentName
-                  })
-                });
-
-                const data = await res.json();
-                if (res.ok && data.assessment) {
-                  s.score = data.assessment.totalScore;
-                  s.comment = data.assessment.overallFeedback;
-                  s.assessment = data.assessment;
-                  google.script.run.writeAssessmentToDoc(s.fileId, s.fileType, s.companionDocId, data.assessment);
-                  successCount++;
-                }
-              } catch (e) {
-                console.log('Batch item error:', e);
-              }
-              resolve();
-            })
-            .withFailureHandler(() => resolve())
-            .getStudentContentForAssessment(s);
-        });
+        try {
+          await assessStudentPromise(s);
+          successCount++;
+        } catch (e) {
+          console.log('Batch item error:', e);
+        }
       }
 
       btn.disabled = false;
-      btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles mr-1.5"></i> 全班 AI 批改';
+      const label = currentMode === 'direct' ? 'AI 批改此檔' : (currentMode === 'folder' ? '資料夾 AI 批改' : '全班 AI 批改');
+      btn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles mr-1.5"></i> ${label}`;
       renderStudentList(currentStudents);
-      alert(`批改完成！已完成 ${successCount} 位學生的 AI 評閱與 Doc 寫入。`);
+      alert(`批改完成！已完成 ${successCount} 份作業的 AI 評閱與 Doc 寫入。`);
     }
 
     // 6. Sync to Google Sheets Master
@@ -542,8 +712,19 @@
         alert('名單無學生資料');
         return;
       }
-      const workSelect = document.getElementById('courseWorkSelect');
-      const workName = workSelect.options[workSelect.selectedIndex].text.split('(')[0].trim() || '作業成績';
+
+      let workName = '作業成績';
+      if (currentMode === 'classroom') {
+        const workSelect = document.getElementById('courseWorkSelect');
+        if (workSelect.selectedIndex >= 0 && workSelect.value) {
+          workName = workSelect.options[workSelect.selectedIndex].text.split('(')[0].trim() || '作業成績';
+        }
+      } else if (currentMode === 'folder') {
+        workName = document.getElementById('folderWorkNameInput').value.trim() || '資料夾作業';
+      } else if (currentMode === 'direct') {
+        syncDirectMetadata();
+        workName = document.getElementById('directWorkNameInput').value.trim() || '單檔作業成績';
+      }
 
       const resultsToSync = currentStudents.map(s => ({
         studentId: s.studentId,
